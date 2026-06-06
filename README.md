@@ -1,5 +1,7 @@
 # Market Pulse
 
+[![GitHub](https://img.shields.io/badge/GitHub-jaideeppyne%2Fmarket--pulse-181717?logo=github)](https://github.com/jaideeppyne/market-pulse)
+
 Real-time **US + India** stock scanner with:
 
 - 24/7 background crawlers (prices + RSS news)
