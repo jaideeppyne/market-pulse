@@ -1,0 +1,8 @@
+# One symbol per line — added to US universe
+TTAN
+AGX
+VRT
+GEV
+RDW
+RDDT
+OSCR

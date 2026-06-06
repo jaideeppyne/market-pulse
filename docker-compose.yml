@@ -1,0 +1,12 @@
+services:
+  market-pulse:
+    build: .
+    container_name: market-pulse
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - TZ=UTC

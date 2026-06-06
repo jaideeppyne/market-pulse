@@ -1,0 +1,139 @@
+server:
+  host: "0.0.0.0"
+  port: 8765
+
+retention:
+  # Automatic DB cleanup (runs on startup + every cleanup_interval_hours)
+  cleanup_interval_hours: 12
+  news_keep_days: 7
+  scan_snapshots_keep_days: 3
+  # Max snapshot rows per symbol (extra guard against bloat)
+  max_snapshots_per_symbol: 30
+  # Reclaim disk after deletes (runs weekly when cleanup runs)
+  vacuum_on_cleanup: true
+
+earnings:
+  # How far ahead to show results (days)
+  days_ahead: 7
+  # Full universe earnings scan (seconds) — ~3–8 min per full pass
+  scan_interval_sec: 1800
+  batch_size: 20
+  batch_delay_sec: 0.4
+
+scanner:
+  # Full universe scan interval (seconds). Lower = faster but more API load.
+  price_scan_interval_sec: 90
+  # Hot-list price-only refresh (day %, sparkline) between full scans
+  quick_price_interval_sec: 45
+  quick_price_batch: 50
+  news_scan_interval_sec: 90
+  # Rank hot list by buy_score (entry-first). quality_score kept for reference.
+  ranking_mode: buy_score
+  # Symbols per batch for yfinance (avoid rate limits)
+  batch_size: 40
+  batch_delay_sec: 0.35
+  # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50)
+  hot_score_threshold: 38
+  # How many top movers to broadcast (per market + global cap)
+  top_n: 200
+
+markets:
+  us:
+    enabled: true
+    # Built-in liquid universe; expand via data/us_extra.txt
+    use_sp500: true
+    use_nasdaq100: true
+    extra_symbols_file: "data/us_extra.txt"
+  india:
+    enabled: true
+    use_nifty50: true
+    use_nifty500_sample: true
+    extra_symbols_file: "data/india_extra.txt"
+
+news:
+  max_headlines_per_feed: 50
+  feeds:
+    # Core curated RSS (reliable but limited — anyone can subscribe to these manually)
+    - name: "CNBC Top News"
+      url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"
+      market: "us"
+    - name: "CNBC Earnings"
+      url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069"
+      market: "us"
+    - name: "Moneycontrol Markets"
+      url: "https://www.moneycontrol.com/rss/latestnews.xml"
+      market: "india"
+    - name: "Economic Times Markets"
+      url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
+      market: "india"
+    - name: "Yahoo Finance"
+      url: "https://finance.yahoo.com/news/rssindex"
+      market: "global"
+    - name: "Reuters Business"
+      url: "https://feeds.reuters.com/reuters/businessNews"
+      market: "global"
+    - name: "MarketWatch Top"
+      url: "https://feeds.marketwatch.com/marketwatch/topstories/"
+      market: "us"
+    - name: "Investing.com India"
+      url: "https://www.investing.com/rss/news_301.rss"
+      market: "india"
+    - name: "Business Standard Markets"
+      url: "https://www.business-standard.com/rss/markets-106.rss"
+      market: "india"
+    - name: "Livemint Markets"
+      url: "https://www.livemint.com/rss/markets"
+      market: "india"
+    - name: "Financial Express"
+      url: "https://www.financialexpress.com/market/rss/"
+      market: "india"
+
+    # Google News RSS — this pulls aggregated headlines from *thousands* of sites across the web
+    # (the "impossible to manually search everywhere" part). Targeted queries surface catalysts,
+    # earnings, smart-money mentions etc. that a hand-curated 5-10 feed list would miss.
+    - name: "Google News US - Earnings & Catalysts"
+      url: "https://news.google.com/rss/search?q=earnings+OR+%22results+today%22+OR+%22beats+estimates%22+OR+%22price+target%22+OR+upgrade+when:1d&hl=en-US&gl=US&ceid=US:en"
+      market: "us"
+    - name: "Google News India - Markets & Results"
+      url: "https://news.google.com/rss/search?q=earnings+OR+results+OR+%22block+deal%22+OR+promoter+OR+FII+OR+%22QIP%22+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    - name: "Google News - Smart Money & Whales"
+      url: "https://news.google.com/rss/search?q=(buffett+OR+berkshire+OR+ackman+OR+icahn+OR+%22cathie+wood%22+OR+ark+OR+jhunjhunwala+OR+kacholia+OR+kela+OR+damani)+ (buy+OR+bought+OR+stake+OR+accumulat)+when:1d&hl=en-US&gl=US&ceid=US:en"
+      market: "global"
+    - name: "Google News - Policy & Contracts"
+      url: "https://news.google.com/rss/search?q=(PLI+OR+%22make+in+india%22+OR+defence+order+OR+contract+award+OR+tender+OR+%22govt+approves%22)+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+
+    # Additional high-signal wires / specialist feeds (press releases, analysis)
+    - name: "Seeking Alpha Market Currents"
+      url: "https://seekingalpha.com/feed/market_currents.xml"
+      market: "us"
+    - name: "Benzinga"
+      url: "https://feeds.benzinga.com/benzinga/news"
+      market: "us"
+    - name: "PR Newswire - Latest"
+      url: "https://www.prnewswire.com/rss/all-news-releases-from-PRNewswire.rss"
+      market: "global"
+
+signals:
+  # buy_score = entry-heavy (next buy). quality_score = all factors.
+  entry_weight: 3.2
+  extension_penalty: 2.2
+
+  weights:
+    momentum_intraday: 12
+    momentum_5d: 8
+    rvol: 15
+    rsi_sweet_spot: 10
+    rsi_oversold_bounce: 8
+    near_52w_high: 10
+    cup_handle: 12
+    positive_fcf: 8
+    revenue_growth: 6
+    earnings_proximity: 10
+    news_burst: 14
+    gap_up: 10
+    ma_alignment: 8
+    macd_bullish: 6
+    volume_trend_up: 8
+    policy_keyword: 5

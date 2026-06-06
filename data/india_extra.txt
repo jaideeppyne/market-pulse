@@ -1,0 +1,7 @@
+# One symbol per line — NSE symbols (auto .NS suffix if omitted)
+DIXON
+KAYNES
+SYRMA
+AMBER
+MAZDOCK
+GRSE

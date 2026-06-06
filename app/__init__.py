@@ -1,0 +1,1 @@
+"""Market Pulse — real-time US + India stock scanner."""

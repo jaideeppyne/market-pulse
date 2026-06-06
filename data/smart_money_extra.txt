@@ -1,0 +1,7 @@
+# Optional extra names (one per line) — parsed by future crawler hooks.
+# Format: kind|regex|display name
+# kind: india_legend | us_legend | politician_us | politician_india | foreign_india
+#
+# Examples (uncomment to extend):
+# india_legend|mithul\s+mehta|Mithul Mehta
+# india_legend|aman\s+gupta|Aman Gupta (Shark Tank / boAt)
