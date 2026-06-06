@@ -21,6 +21,27 @@ Open **http://127.0.0.1:8765**
 
 **Note on universe size & earnings:** The app now uses an expanded static fallback + Wikipedia scrape (requires `lxml`). With a fuller list of liquid names the "Earnings (7d)" list will surface more names when they have calendar data. In any 7-day window only a modest number of companies report — that's normal. Add tickers to `data/us_extra.txt` / `data/india_extra.txt` to watch more.
 
+## GitHub
+
+Source code: https://github.com/jaideep-pyne/market-pulse
+
+This repo contains the full application (backend + frontend). The "website" (dashboard) requires the Python server to be running.
+
+### Deploy the live app
+
+The full experience (live crawlers + WebSocket updates) needs a server:
+
+- **Easiest (recommended)**: [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io)
+- Use the included `Dockerfile` + `docker-compose.yml`
+- Set environment as needed (no secrets required for the free data sources)
+- The server listens on port 8765 by default (configurable in `config.yaml`)
+
+### GitHub Pages (UI only)
+
+You can host just the static frontend on GitHub Pages for a visual preview (no live data or API calls). Point Pages to the `/frontend` folder (or copy `index.html` + assets to a `docs/` or `gh-pages` branch). The UI will be non-functional without a backend.
+
+## Architecture
+
 ## Docker (24h operation)
 
 ```bash
