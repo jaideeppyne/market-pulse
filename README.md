@@ -23,7 +23,7 @@ Open **http://127.0.0.1:8765**
 
 ## GitHub
 
-Source code: https://github.com/jaideep-pyne/market-pulse
+Source code: https://github.com/jaideeppyne/market-pulse
 
 This repo contains the full application (backend + frontend). The "website" (dashboard) requires the Python server to be running.
 
