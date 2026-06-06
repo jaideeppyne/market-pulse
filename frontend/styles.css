@@ -750,3 +750,54 @@ body.modal-open { overflow: hidden; }
   }
   .brand .sub { display: none; }
 }
+
+/* New features: watch, radar, thesis, alerts, sizer, gauges */
+.icon-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-right: 0.3rem;
+}
+.icon-btn.has-alerts { border-color: #f59e0b; color: #f59e0b; }
+
+.thesis-block {
+  background: rgba(18,24,32,0.6);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.4rem 0.55rem;
+  margin: 0.4rem 0;
+  font-size: 0.82rem;
+}
+.thesis-head { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.2rem; }
+.thesis-bullets { margin:0.15rem 0 0.1rem; padding-left:1rem; }
+.thesis-bullets li { margin:0.1rem 0; }
+.risks { color: var(--warn); font-size:0.78rem; margin-top:0.15rem; }
+
+.sizer { font-size:0.78rem; margin:0.25rem 0; display:flex; gap:0.35rem; align-items:center; flex-wrap:wrap; }
+.sizer input { background:#0b0f14; border:1px solid var(--border); color:var(--text); padding:1px 4px; border-radius:3px; }
+
+.radar-list { display:flex; flex-direction:column; gap:0.25rem; }
+.radar-row { display:flex; align-items:center; gap:0.4rem; padding:0.25rem 0.4rem; background:rgba(18,24,32,0.5); border:1px solid var(--border); border-radius:4px; font-size:0.82rem; }
+.radar-row button { margin-left:auto; }
+
+#watchTable td, #watchTable th { padding:0.25rem 0.35rem; }
+.tiny, .tiny-watch { font-size:0.68rem; padding:1px 5px; border:1px solid var(--border); background:transparent; color:var(--muted); border-radius:3px; cursor:pointer; }
+.tiny-watch { margin-left:0.25rem; }
+.tiny.danger { border-color:#ef4444; color:#ef4444; }
+
+.alerts-panel {
+  position: fixed; bottom: 10px; right: 10px; width: 320px; max-height: 380px; overflow:auto;
+  background: var(--panel); border:1px solid var(--border); border-radius:8px; z-index:200; box-shadow:0 10px 30px rgba(0,0,0,0.5);
+}
+.ap-header { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; font-weight:600; }
+.ap-body { padding:0.4rem 0.6rem; font-size:0.82rem; }
+.alert-item { padding:0.35rem 0; border-bottom:1px solid #1e2a38; }
+
+.stat-card .value { font-weight:700; }
+
+.btn.small { font-size:0.78rem; padding:0.2rem 0.5rem; }
+.btn.danger { border-color:#ef4444; color:#ef4444; }

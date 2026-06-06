@@ -11,7 +11,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import load_config
-from app.db import DB_PATH, db_file_size_mb, init_db, recent_news, upcoming_earnings
+from app.db import (
+    DB_PATH,
+    db_file_size_mb,
+    init_db,
+    recent_news,
+    recent_strong_snapshots,
+    snapshots_for_symbol,
+    upcoming_earnings,
+)
 from app.state import AppState
 from app.universe import build_universe
 from app.workers.scanner_loop import ScannerLoop
@@ -286,6 +294,42 @@ async def api_earnings(days: int = 7):
         "stored": stored,
         "count": len(snap.get("earnings", [])),
     }
+
+
+@app.get("/api/edge")
+async def api_edge(days: int = 2, min_score: float = 55.0):
+    """Backtest / historical edge view: recent strong snapshots from the DB.
+    Traders can see what the engine was flagging as high conviction in the recent past.
+    Full forward returns computed client-side or via re-analyze for now (free data limits).
+    """
+    snaps = await recent_strong_snapshots(days=days, min_score=min_score, limit=120)
+    # Group by approximate window for "past scans"
+    by_time: dict[str, list] = {}
+    for s in snaps:
+        key = s.get("created_at", "")[:13]  # hour bucket
+        by_time.setdefault(key, []).append({
+            "symbol": s["symbol"],
+            "market": s.get("market"),
+            "score": round(s.get("score", 0), 1),
+            "created_at": s.get("created_at"),
+            "has_smart_money": bool((s.get("payload") or {}).get("metrics", {}).get("smart_money", {}).get("hits")),
+        })
+    summary = {
+        "windows": len(by_time),
+        "total_signals": len(snaps),
+        "min_score": min_score,
+        "days": days,
+    }
+    return {"summary": summary, "signals": snaps[:60], "by_window": by_time}
+
+
+@app.get("/api/snapshots/{symbol:path}")
+async def api_snapshots_for_symbol(symbol: str, limit: int = 20):
+    """Score history snapshots for a symbol (used by My List watch for history curves)."""
+    from urllib.parse import unquote
+    sym = unquote(symbol).upper()
+    rows = await snapshots_for_symbol(sym, limit=limit)
+    return {"symbol": sym, "snapshots": rows}
 
 
 @app.get("/api/health")

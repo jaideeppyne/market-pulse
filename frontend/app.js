@@ -23,6 +23,9 @@
   const sectorSummaryHint = document.getElementById("sectorSummaryHint");
   const sectorFilterBadge = document.getElementById("sectorFilterBadge");
 
+  const alertBell = document.getElementById("alertBell");
+  const alertCountEl = document.getElementById("alertCount");
+
   let marketFilter = "all";
   let sectorMarketFilter = "all";
   let selectedSector = null;
@@ -43,6 +46,18 @@
   const modalFullCache = new Map();
   const prevRankBySymbol = new Map();
   const DISPLAY_LIMIT = 200;
+
+  // New features state
+  let watchlist = []; // [{symbol, addedAt, lastScore, lastBuy, addedScore}]
+  let recentAlerts = []; // [{type, symbol, msg, ts, score}]
+  let seenSmartMoney = new Set();
+  let alertsEnabled = true;
+
+  // Load persisted watchlist (local only)
+  try {
+    const saved = localStorage.getItem("marketpulse_watchlist");
+    if (saved) watchlist = JSON.parse(saved);
+  } catch (e) {}
 
   const CATEGORY_SORT = [
     "entry",
@@ -173,6 +188,8 @@
       }
       activeTab = tab;
       if (tab === "sectors") renderSectors(lastData);
+      if (tab === "watch") renderWatch(lastData);
+      if (tab === "radar") renderRadar(lastData);
     });
   });
 
@@ -210,6 +227,29 @@
     renderHot(lastData);
   });
 
+  // New buttons & bell
+  document.getElementById("exportHotBtn")?.addEventListener("click", () => {
+    const pool = getHotPool(lastData || {});
+    exportCSV(pool, "market_pulse_hot.csv");
+  });
+  document.getElementById("exportWatchBtn")?.addEventListener("click", () => {
+    const rows = watchlist.map(w => ({symbol: w.symbol, buy_score: w.lastBuy, quality_score: w.lastQuality}));
+    exportCSV(rows, "market_pulse_watchlist.csv");
+  });
+  document.getElementById("clearWatchBtn")?.addEventListener("click", () => {
+    if (confirm("Clear your entire My List?")) {
+      watchlist = [];
+      saveWatch();
+      renderWatch(lastData);
+    }
+  });
+  alertBell?.addEventListener("click", () => {
+    if (Notification && Notification.permission === "default") {
+      Notification.requestPermission().then(p => { if (p === "granted") alertsEnabled = true; });
+    }
+    showAlertsPanel();
+  });
+
   function hasSmartMoneySignal(row) {
     if (row.metrics?.has_smart_money || row.metrics?.smart_money?.hits?.length) return true;
     return (row.alerts || []).some((a) => /LEGEND|WHALE|POLITICIAN|FOREIGN BUY|SMART MONEY/i.test(a));
@@ -222,24 +262,32 @@
   // Uses the upgraded /api/symbol (and /api/analyze) which runs the *exact same*
   // full factor registry, scoring, smart money, news catalysts, etc. as the live scanner.
   async function runAnalyzeFromSearch() {
-    const q = (symbolSearch?.value || "").trim();
+    const q = (symbolSearch?.value || "").trim().toUpperCase();
     if (!q) return;
-    // If it looks like a ticker, force full analysis (even if not in current hot list)
-    const looksLikeTicker = /^[A-Za-z0-9.]{1,12}$/.test(q);
+
+    // Immediate visible feedback so the "analyze" feels responsive
+    // (on-demand fetch can take several seconds)
+    detailTitle.textContent = q;
+    detailEl.innerHTML = `<div class="detail-empty"><p>Analyzing ${escapeHtml(q)} with the full engine…</p><p class="muted">Fetching 6mo history, fundamentals, running 100+ factors, news intel, etc.</p></div>`;
+
+    if (activeTab !== "hot") {
+      document.querySelector('.tab[data-tab="hot"]')?.click();
+    }
+    document.querySelector(".sticky-detail")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
     try {
-      // fetchFullSymbol will call /api/symbol which now does on-demand analysis for unknowns
-      const full = await fetchFullSymbol(q.toUpperCase());
-      // Make it available in current view
+      const full = await fetchFullSymbol(q);
       if (lastData) {
         lastData.symbols = lastData.symbols || {};
         lastData.symbols[full.symbol] = full;
       }
-      selectSymbol(full.symbol, lastData || {});
-      // Optional: clear the input after successful analyze so filter doesn't stay stuck
+      renderDetail(full);
+      if (lastData) renderHot(lastData);
       if (symbolSearch) symbolSearch.value = "";
-      renderHot(lastData);
+      // Open the full factor checklist (the "analysis box") automatically for the analyzed ticker
+      openFactorModal(q, lastData || {});
     } catch (e) {
-      alert(`Could not analyze "${q}". ${e.message || "Check ticker spelling or try again in a moment."}`);
+      detailEl.innerHTML = `<div class="detail-empty"><p>Could not analyze ${escapeHtml(q)}</p><p class="muted">${escapeHtml(e.message || e)}</p></div>`;
     }
   }
 
@@ -271,6 +319,22 @@
   });
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && factorModal && !factorModal.hidden) closeFactorModal();
+    if (e.key === "/" && document.activeElement && document.activeElement.tagName !== "INPUT" && document.activeElement.tagName !== "TEXTAREA") {
+      e.preventDefault();
+      symbolSearch && symbolSearch.focus();
+    }
+    if ((e.key.toLowerCase() === "w") && selectedSymbol) {
+      const row = findRow(selectedSymbol, lastData);
+      if (watchlist.some(ww => ww.symbol === selectedSymbol)) removeFromWatch(selectedSymbol); else addToWatch(selectedSymbol, row);
+      renderWatch(lastData);
+    }
+    if (e.key.toLowerCase() === "f" && selectedSymbol) {
+      openFactorModal(selectedSymbol, lastData);
+    }
+    if (e.key.toLowerCase() === "e") {
+      const pool = getHotPool(lastData || {});
+      if (pool.length) exportCSV(pool, "market_pulse_hot.csv");
+    }
   });
 
   document.querySelectorAll("[data-factor-filter]").forEach((btn) => {
@@ -470,6 +534,227 @@
       .join(" ");
     const color = values[values.length - 1] >= values[0] ? "#22c55e" : "#ef4444";
     return `<svg class="spark" width="${w}" height="${h}"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/></svg>`;
+  }
+
+  /* ========== NEW: Thesis, Alerts, Watch, Radar, Export helpers ========== */
+
+  function generateThesis(row) {
+    if (!row) return { bullets: [], archetype: "Setup", risks: [] };
+    const m = row.metrics || {};
+    const breakdown = row.factor_breakdown || m.factor_breakdown || [];
+    const top = (m.top_weighted_factors || row.top_factors || []).slice(0, 6);
+    const alerts = (row.alerts || []).filter(a => /SMART|LEGEND|WHALE|POLITICIAN|FII|NEWS|RVOL|BASE|PRE-EARNINGS/i.test(a));
+
+    const passedEntry = breakdown.filter(f => f.category === "entry" && f.status === "pass").length;
+    const hasSM = (m.smart_money && m.smart_money.hits && m.smart_money.hits.length) || hasSmartMoneySignal(row);
+    const hasCatalyst = breakdown.some(f => (f.category === "catalyst" || f.category === "news") && f.status === "pass");
+    const isBase = breakdown.some(f => ["base_compression", "cup_forming", "pullback_50dma", "higher_lows"].includes(f.id) && f.status === "pass");
+    const nearHighRisk = breakdown.some(f => ["already_at_high", "extended_run", "chase_risk"].includes(f.id) && (f.status === "risk" || f.status === "pass"));
+
+    let archetype = "Multi-factor Setup";
+    if (hasSM) archetype = "Smart Money + Catalyst";
+    else if (passedEntry >= 2 && isBase) archetype = "Early Base / Coiling";
+    else if (row.earnings_soon || breakdown.some(f => f.id && f.id.includes("earnings") && f.status === "pass")) archetype = "Pre-Earnings Catalyst";
+    else if (hasCatalyst && (m.rvol || 0) > 1.5) archetype = "News + Volume Catalyst";
+
+    const bullets = [];
+    if (hasSM) bullets.push("S+ tier named smart money / politician / FII buy context in recent news");
+    if (passedEntry) bullets.push(`${passedEntry} entry-setup factors (room to run, pullback, higher lows, compression)`);
+    if (hasCatalyst) bullets.push("Clear catalyst(s): contracts, policy, earnings tone, guidance, or sector tailwind");
+    if ((m.buy_score || row.score || 0) > 70) bullets.push("High buy score — engine sees favorable risk/reward for next entry (penalizes extensions)");
+    if (top.length) bullets.push("Top drivers: " + top.map(t => (t.label || t.id)).slice(0,3).join(" · "));
+    if (alerts.length) bullets.push("Live alerts: " + alerts.slice(0,2).join(" | "));
+
+    const risks = [];
+    if (nearHighRisk) risks.push("Extension / chase risk detected — price near 52w high or parabolic move");
+    if (breakdown.some(f => f.id === "rsi_overbought" && f.status === "risk")) risks.push("RSI overbought zone");
+    if (breakdown.some(f => f.id === "high_short" && f.status === "risk")) risks.push("Elevated short interest");
+    if (!hasCatalyst && !hasSM) risks.push("Limited fresh catalyst in current news window");
+
+    return { bullets: bullets.slice(0,5), archetype, risks: risks.slice(0,3) };
+  }
+
+  function pushAlert(type, symbol, msg, score) {
+    const a = { type, symbol, msg, ts: new Date().toISOString(), score: score || null };
+    recentAlerts.unshift(a);
+    if (recentAlerts.length > 30) recentAlerts.pop();
+    renderAlertBell();
+    // Browser notification (best effort)
+    if (alertsEnabled && "Notification" in window && Notification.permission === "granted") {
+      try { new Notification(`Market Pulse • ${symbol}`, { body: msg.slice(0, 120), tag: symbol }); } catch(e){}
+    }
+    // Also surface in radar if smart money
+    if (type === "smart_money") {
+      renderRadar(lastData);
+    }
+  }
+
+  function renderAlertBell() {
+    if (!alertCountEl || !alertBell) return;
+    const n = recentAlerts.length;
+    alertCountEl.textContent = n > 9 ? "9+" : n;
+    alertBell.classList.toggle("has-alerts", n > 0);
+  }
+
+  function showAlertsPanel() {
+    const html = recentAlerts.length
+      ? recentAlerts.map(a => `<div class="alert-item"><strong>${escapeHtml(a.symbol)}</strong> <span class="muted">${escapeHtml(a.type)}</span><br><span>${escapeHtml(a.msg)}</span><div class="muted" style="font-size:0.7rem">${new Date(a.ts).toLocaleTimeString()}</div></div>`).join("")
+      : '<p class="muted">No alerts yet. High buy scores, new S+ hits, and pre-earnings setups will appear here + trigger browser notifications.</p>';
+    // Simple modal reuse or inline
+    const panel = document.createElement("div");
+    panel.className = "alerts-panel";
+    panel.innerHTML = `<div class="ap-header"><strong>Recent Alerts</strong> <button class="close-x">×</button></div><div class="ap-body">${html}</div>`;
+    document.body.appendChild(panel);
+    panel.querySelector(".close-x").onclick = () => panel.remove();
+    panel.onclick = (e) => { if (e.target === panel) panel.remove(); };
+  }
+
+  function addToWatch(symbol, row) {
+    symbol = symbol.toUpperCase();
+    if (watchlist.find(w => w.symbol === symbol)) return;
+    const m = row && row.metrics ? row.metrics : {};
+    watchlist.unshift({
+      symbol,
+      addedAt: new Date().toISOString(),
+      addedScore: Math.round(row ? (row.buy_score ?? row.score ?? 0) : 0),
+      lastScore: Math.round(row ? (row.buy_score ?? row.score ?? 0) : 0),
+      lastBuy: Math.round(m.buy_score ?? row?.score ?? 0),
+      lastQuality: Math.round(m.quality_score ?? 0),
+    });
+    saveWatch();
+    renderWatch(lastData);
+    // gentle nudge
+    if (alertBell) {
+      alertBell.style.transform = "scale(1.2)";
+      setTimeout(() => { if (alertBell) alertBell.style.transform = ""; }, 400);
+    }
+  }
+
+  function removeFromWatch(symbol) {
+    watchlist = watchlist.filter(w => w.symbol !== symbol.toUpperCase());
+    saveWatch();
+    renderWatch(lastData);
+  }
+
+  function saveWatch() {
+    try { localStorage.setItem("marketpulse_watchlist", JSON.stringify(watchlist)); } catch(e){}
+  }
+
+  function updateWatchFromRow(symbol, row) {
+    const w = watchlist.find(x => x.symbol === symbol.toUpperCase());
+    if (!w || !row) return;
+    const m = row.metrics || {};
+    w.lastScore = Math.round(row.buy_score ?? row.score ?? w.lastScore ?? 0);
+    w.lastBuy = Math.round(m.buy_score ?? row.score ?? 0);
+    w.lastQuality = Math.round(m.quality_score ?? 0);
+    saveWatch();
+  }
+
+  function hasSmartMoneySignal(row) {
+    if (!row) return false;
+    if (row.metrics?.has_smart_money || row.metrics?.smart_money?.hits?.length) return true;
+    return (row.alerts || []).some((a) => /LEGEND|WHALE|POLITICIAN|FOREIGN BUY|SMART MONEY/i.test(a));
+  }
+
+  function renderRadar(data) {
+    const el = document.getElementById("radarList");
+    if (!el) return;
+    const pool = (data && (data.hot || [])) || [];
+    const hits = pool.filter(r => hasSmartMoneySignal(r) || (r.metrics && r.metrics.smart_money));
+    // Also pull recent from alerts we generated
+    const fromAlerts = recentAlerts.filter(a => a.type === "smart_money").slice(0,5).map(a => ({symbol: a.symbol, _fromAlert: true}));
+    if (!hits.length && !fromAlerts.length) {
+      el.innerHTML = '<p class="muted">No named smart money hits in current hot list. New S+ detections (legends, politicians, credible FII) will surface here instantly via the live WS feed and broad news aggregation.</p>';
+      return;
+    }
+    let html = hits.slice(0,12).map(r => {
+      const sm = r.metrics?.smart_money || {};
+      const primary = sm.primary_alert || (r.alerts || []).find(a => /LEGEND|WHALE|POLITICIAN/i.test(a)) || "Smart money signal";
+      return `<div class="radar-row" data-symbol="${attrEsc(r.symbol)}">
+        <strong>${escapeHtml(r.symbol)}</strong> <span class="whale-badge">${escapeHtml(primary).slice(0,48)}</span>
+        <span class="muted">buy ${r.buy_score ?? r.score ?? "—"}</span>
+        <button class="tiny" data-act="analyze">Analyze</button>
+        <button class="tiny" data-act="watch">★ Watch</button>
+      </div>`;
+    }).join("");
+    // merge alert-only
+    fromAlerts.forEach(a => {
+      if (!hits.find(h => h.symbol === a.symbol)) {
+        html += `<div class="radar-row" data-symbol="${attrEsc(a.symbol)}"><strong>${escapeHtml(a.symbol)}</strong> <span class="whale-badge">Recent S+ hit</span> <button class="tiny" data-act="analyze">Analyze</button></div>`;
+      }
+    });
+    el.innerHTML = html;
+    el.querySelectorAll(".radar-row").forEach(row => {
+      row.onclick = (e) => {
+        const sym = row.dataset.symbol;
+        if (e.target.dataset.act === "watch") { addToWatch(sym, findRow(sym, data)); return; }
+        if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
+          document.querySelector('.tab[data-tab="hot"]')?.click();
+          if (symbolSearch) symbolSearch.value = sym;
+          // trigger full analyze path
+          const fake = { preventDefault:()=>{} };
+          // reuse existing run but directly
+          fetchFullSymbol(sym).then(full => {
+            renderDetail(full);
+            openFactorModal(sym, data || lastData);
+          }).catch(()=>{});
+        }
+      };
+    });
+  }
+
+  function exportCSV(rows, filename = "market_pulse_export.csv") {
+    if (!rows || !rows.length) return;
+    const headers = ["symbol","buy_score","quality_score","factors_hit","day_chg","rvol","market"];
+    const lines = [headers.join(",")];
+    rows.forEach(r => {
+      const m = r.metrics || {};
+      lines.push([
+        r.symbol,
+        r.buy_score ?? r.score ?? "",
+        m.quality_score ?? "",
+        r.factors_hit ?? "",
+        m.day_chg_pct ?? "",
+        m.rvol ?? "",
+        r.market ?? ""
+      ].join(","));
+    });
+    const blob = new Blob([lines.join("\n")], {type: "text/csv"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function buildMarkdownThesis(symbol, row) {
+    const t = generateThesis(row);
+    const m = row.metrics || {};
+    let md = `# ${symbol} — Market Pulse Thesis\n\n`;
+    md += `**Buy score**: ${row.buy_score ?? row.score ?? "—"}  |  **Quality**: ${m.quality_score ?? "—"}  |  **Factors**: ${(row.factors_hit ?? "?")}/${row.factors_total ?? "?"}\n\n`;
+    md += `**Archetype**: ${t.archetype}\n\n`;
+    md += `## Why this scores now\n`;
+    t.bullets.forEach(b => md += `- ${b}\n`);
+    if (t.risks.length) {
+      md += `\n## Key risks to watch\n`;
+      t.risks.forEach(r => md += `- ${r}\n`);
+    }
+    md += `\n*Generated by Market Pulse 100+ factor engine (same logic as live hot list). Not financial advice.*\n`;
+    return md;
+  }
+
+  function copyThesis(symbol, row) {
+    const md = buildMarkdownThesis(symbol, row);
+    navigator.clipboard.writeText(md).then(() => {
+      const old = event && event.target ? event.target.textContent : "";
+      // non-blocking toast
+      const t = document.createElement("span");
+      t.textContent = " Thesis copied as Markdown ";
+      t.style.cssText = "position:fixed;bottom:12px;right:12px;background:#111827;color:#e0f0ff;padding:4px 10px;border-radius:4px;font-size:0.8rem";
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 1400);
+    }).catch(() => {
+      prompt("Copy this thesis Markdown:", md);
+    });
   }
 
   function hotFingerprint(data) {
@@ -769,9 +1054,18 @@
         livePill.hidden = true;
       }
     }
+    // Compute live gauges from hot for conviction / S+
+    const hotPool = getHotPool(data || {});
+    const highConv = hotPool.filter(r => (r.buy_score ?? r.score ?? 0) >= 70).length;
+    const smCount = hotPool.filter(r => hasSmartMoneySignal(r)).length;
+    const newsBurst = (data?.news || []).length;
+
     statsBar.innerHTML = `
       <div class="stat-card"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
       <div class="stat-card"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
+      <div class="stat-card"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
+      <div class="stat-card"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
+      <div class="stat-card"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
       <div class="stat-card"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
       <div class="stat-card"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
       <div class="stat-card"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
@@ -824,8 +1118,9 @@
         const buy = m.buy_score ?? r.score;
         const qual = m.quality_score ?? "—";
         const whale = smartMoneyBadges(r);
+        const watched = watchlist.some(w => w.symbol === r.symbol) ? "★" : "☆";
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong>${r.symbol}</strong>${ext}${whale}<br><span class="sym-name">${escapeHtml(m.name || "")}</span></td>
+          <td><span class="rank-num">${idx + 1}</span> <strong>${r.symbol}</strong>${ext}${whale}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
           <td><span class="score-pill">${buy}</span></td>
           <td><span class="qual-pill">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
@@ -846,6 +1141,17 @@
       btn.addEventListener("click", (ev) => {
         ev.stopPropagation();
         openFactorModal(btn.dataset.symbol, data);
+      });
+    });
+    hotBody.querySelectorAll(".tiny-watch").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sym = btn.dataset.watch;
+        const row = findRow(sym, data);
+        if (watchlist.some(w => w.symbol === sym)) removeFromWatch(sym);
+        else addToWatch(sym, row || {symbol: sym});
+        renderHot(data);
+        if (activeTab === "watch") renderWatch(data);
       });
     });
   }
@@ -878,6 +1184,24 @@
       : "";
 
     const isAdHoc = row.ad_hoc || m.ad_hoc;
+    const thesis = generateThesis(row);
+    const isWatched = watchlist.some(w => w.symbol === row.symbol);
+    const thesisHtml = `
+      <div class="thesis-block">
+        <div class="thesis-head"><strong>${escapeHtml(thesis.archetype)}</strong> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button> <button class="tiny" data-act="thesis">Copy thesis</button></div>
+        <ul class="thesis-bullets">${thesis.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
+        ${thesis.risks.length ? `<div class="risks"><strong>Risks:</strong> ${thesis.risks.map(r=>escapeHtml(r)).join(" · ")}</div>` : ""}
+      </div>`;
+
+    // tiny position sizer (local only)
+    const sizerHtml = `
+      <div class="sizer">
+        <span class="muted">Position sizer (local):</span>
+        <input type="number" id="acctSize" value="50000" style="width:82px" /> acct
+        <input type="number" id="riskPct" value="1.0" step="0.1" style="width:56px" /> % risk
+        <span id="sizerOut" class="muted"></span>
+      </div>`;
+
     detailEl.innerHTML = `<div class="detail">
       <h3>${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc analysis</span>' : ''}</h3>
       <div class="meta-line">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${row.market.toUpperCase()}</div>
@@ -887,6 +1211,8 @@
         ${m.is_extended ? '<span class="ext-badge">Extended — late chase</span>' : ""}
         <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}">${hit}/${total} factors</button>
       </div>
+      ${thesisHtml}
+      ${sizerHtml}
       ${m.pct_52w_range != null ? `<div class="meta-line">52w range position: ${m.pct_52w_range}% · entry checks: ${m.entry_factors ?? 0}</div>` : ""}
       <div class="spark-large">${sparklineSvg(row.sparkline, 300, 72)}</div>
       <div class="meta-line">$${m.price} · Day ${m.day_chg_pct}% · 5d ${m.ret5d_pct}% · RVOL ${m.rvol}x · RSI ${m.rsi ?? "—"}</div>
@@ -899,6 +1225,39 @@
     detailEl.querySelector(".detail-factor-btn")?.addEventListener("click", () => {
       openFactorModal(row.symbol, lastData);
     });
+
+    // thesis / watch actions
+    const thesisBlock = detailEl.querySelector(".thesis-block");
+    thesisBlock?.querySelector('[data-act="watch"]')?.addEventListener("click", (e) => {
+      if (isWatched) removeFromWatch(row.symbol); else addToWatch(row.symbol, row);
+      renderDetail(row); // refresh
+      renderWatch(lastData);
+    });
+    thesisBlock?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
+
+    // live sizer calc
+    const acct = detailEl.querySelector("#acctSize");
+    const rp = detailEl.querySelector("#riskPct");
+    const out = detailEl.querySelector("#sizerOut");
+    function recalc() {
+      const a = parseFloat(acct?.value || "0");
+      const r = parseFloat(rp?.value || "0") / 100;
+      const price = parseFloat(m.price || 0);
+      if (!a || !r || !price) { out.textContent = ""; return; }
+      // crude: use recent ATR proxy from spark range or 3% default
+      const hist = row.sparkline || [];
+      let vol = 0.03;
+      if (hist.length > 5) {
+        const hi = Math.max(...hist), lo = Math.min(...hist);
+        vol = Math.max(0.01, Math.min(0.12, (hi - lo) / ((hi+lo)/2 || 1)));
+      }
+      const riskAmt = a * r;
+      const shares = Math.floor(riskAmt / (price * vol));
+      out.textContent = `~${shares} sh @ ~${(riskAmt).toFixed(0)} risk (vol~${(vol*100).toFixed(1)}%)`;
+    }
+    acct?.addEventListener("input", recalc);
+    rp?.addEventListener("input", recalc);
+    setTimeout(recalc, 50);
   }
 
   function renderEarnings(data) {
@@ -952,6 +1311,61 @@
             .join("");
   }
 
+  async function renderWatch(data) {
+    const tbody = document.querySelector("#watchTable tbody");
+    const countEl = document.getElementById("watchCount");
+    if (!tbody) return;
+    if (!watchlist.length) {
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">Your watchlist is empty. Use the search box to Analyze any ticker (even outside the hot list), then click ★ Watch in the detail panel, or the ☆/★ in Hot rows.</td></tr>`;
+      if (countEl) countEl.textContent = "0 symbols";
+      return;
+    }
+    const htmlParts = [];
+    for (const w of watchlist) {
+      let row = findRow(w.symbol, data) || symbolCache.get(w.symbol);
+      if (!row || !row.metrics) {
+        // fire non-blocking refresh for full current engine data
+        fetch(`/api/symbol/${encodeURIComponent(w.symbol)}`).then(r=>r.json()).then(full => {
+          if (full && !full.error) {
+            mergeScanRow(w.symbol, full);
+            if (activeTab === "watch") renderWatch(lastData);
+          }
+        }).catch(()=>{});
+      }
+      const m = (row && row.metrics) || {};
+      const buy = w.lastBuy || m.buy_score || row?.score || w.addedScore || "—";
+      const qual = w.lastQuality || m.quality_score || "—";
+      const fh = row ? (row.factors_hit ?? m.factors_hit ?? "—") : "—";
+      const ft = row ? (row.factors_total ?? m.factors_total ?? "—") : "—";
+      const added = w.addedAt ? new Date(w.addedAt).toLocaleDateString() : "—";
+      htmlParts.push(`<tr data-symbol="${attrEsc(w.symbol)}">
+        <td><strong>${w.symbol}</strong><br><span class="muted" style="font-size:0.7rem">added ${added} @ ${w.addedScore}</span></td>
+        <td><span class="score-pill">${buy}</span></td>
+        <td><span class="qual-pill">${qual}</span></td>
+        <td>${fh}/${ft}</td>
+        <td><span class="muted" style="font-size:0.75rem">last ${w.lastScore || buy}</span></td>
+        <td>
+          <button class="tiny" data-act="analyze">Analyze</button>
+          <button class="tiny danger" data-act="remove">Remove</button>
+        </td>
+      </tr>`);
+    }
+    tbody.innerHTML = htmlParts.join("");
+    if (countEl) countEl.textContent = `${watchlist.length} symbols`;
+    tbody.querySelectorAll("tr").forEach(tr => {
+      tr.addEventListener("click", (e) => {
+        const sym = tr.dataset.symbol;
+        if (e.target.dataset.act === "remove") {
+          removeFromWatch(sym); return;
+        }
+        if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
+          document.querySelector('.tab[data-tab="hot"]')?.click();
+          fetchFullSymbol(sym).then(full => { renderDetail(full); openFactorModal(sym, data); }).catch(()=>{});
+        }
+      });
+    });
+  }
+
   async function loadFactorCatalog() {
     try {
       const res = await fetch("/api/factors");
@@ -1002,6 +1416,32 @@
       lastScanGeneration = gen;
       lastHotFingerprint = fp;
     }
+    // === ALERTS & SMART MONEY DETECTION (fires on new high conv or S+ ) ===
+    if (data.hot) {
+      (data.hot || []).forEach(r => {
+        const score = r.buy_score ?? r.score ?? 0;
+        const key = r.symbol;
+        if (score >= 78 && !seenSmartMoney.has("high:"+key)) {
+          seenSmartMoney.add("high:"+key);
+          pushAlert("high_score", r.symbol, `Buy score ${Math.round(score)} — strong setup`, score);
+        }
+        if (hasSmartMoneySignal(r) && !seenSmartMoney.has("sm:"+key)) {
+          seenSmartMoney.add("sm:"+key);
+          const primary = (r.metrics?.smart_money?.primary_alert) || (r.alerts||[]).find(a=>/LEGEND|WHALE|POLITICIAN/i.test(a)) || "Named smart money buy";
+          pushAlert("smart_money", r.symbol, primary, score);
+        }
+        // pre-earnings + decent score
+        if ((r.earnings_soon || (r.metrics && r.metrics.earnings_pre)) && score > 55 && !seenSmartMoney.has("earn:"+key)) {
+          seenSmartMoney.add("earn:"+key);
+          pushAlert("pre_earnings", r.symbol, "Pre-earnings setup + base/catalyst factors", score);
+        }
+        // keep watch scores fresh
+        updateWatchFromRow(r.symbol, r);
+      });
+    }
+    renderAlertBell();
+    renderRadar(data);
+
     renderStats(data);
     if (rankingsChanged) {
       renderHot(data);
@@ -1033,6 +1473,7 @@
       factorModalSub.textContent = `${hit} passed · ${total} applicable · buy ${m.buy_score ?? row.score} · ${m.name || ""}`;
       if (rankingsChanged) void renderFactorModalBody(row);
     }
+    if (activeTab === "watch") renderWatch(data);
   }
 
   async function pollSnapshot() {
@@ -1048,4 +1489,11 @@
   loadFactorCatalog();
   connect();
   setInterval(pollSnapshot, 15000);
+
+  // Initial empty renders for new panels (populated on first WS/snapshot)
+  setTimeout(() => {
+    if (document.getElementById("panel-watch")) renderWatch(null);
+    if (document.getElementById("radarList")) renderRadar(null);
+    renderAlertBell();
+  }, 800);
 })();

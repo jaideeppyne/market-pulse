@@ -240,3 +240,54 @@ async def run_retention_cleanup(
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+async def recent_strong_snapshots(days: int = 2, min_score: float = 55.0, limit: int = 80) -> list[dict]:
+    """Return recent high-conviction snapshot rows for backtest/edge views and S+ history."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT symbol, market, score, payload, created_at
+            FROM scan_snapshots
+            WHERE created_at >= ? AND score >= ?
+            ORDER BY created_at DESC, score DESC
+            LIMIT ?
+            """,
+            (cutoff, min_score, limit),
+        )
+        rows = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.get("payload") or "{}")
+            except Exception:
+                d["payload"] = {}
+            rows.append(d)
+        return rows
+
+
+async def snapshots_for_symbol(symbol: str, limit: int = 25) -> list[dict]:
+    """Recent snapshots for one symbol (for watchlist score history and deltas)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT symbol, market, score, payload, created_at
+            FROM scan_snapshots
+            WHERE symbol = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (symbol, limit),
+        )
+        rows = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.get("payload") or "{}")
+            except Exception:
+                d["payload"] = {}
+            rows.append(d)
+        return rows

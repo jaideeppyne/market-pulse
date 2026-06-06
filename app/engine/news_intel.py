@@ -155,12 +155,12 @@ PATTERNS = {
     ),
     "stake_increase": re.compile(
         r"stake increase|raises holding|accumulates shares|"
-        r"parent ups stake|promoter increases",
+        r"parent ups stake|promoter increases|promoter buy|promoter stake rise",
         re.I,
     ),
     "bulk_block_deal": re.compile(
         r"bulk deal|block deal|large trade nse|bse bulk|"
-        r"institutional block",
+        r"institutional block|bulk purchase|block purchase",
         re.I,
     ),
     "qip_fundraise": re.compile(

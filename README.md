@@ -4,10 +4,18 @@
 
 Real-time **US + India** stock scanner with:
 
-- 24/7 background crawlers (prices + RSS news)
-- **20+ auto signals** (RSI, RVOL, cup/handle, MACD, MA stack, FCF, news burst, AH/pre-market, etc.)
-- Live WebSocket dashboard with sparklines
-- SQLite history for news and high-score snapshots
+- 24/7 background crawlers (prices + RSS + Google News aggregation from thousands of sources)
+- **140-factor engine** with tiered scoring (S+ named smart money / politicians / FII at 6.5×), explicit entry bonuses + extension penalties, sector-aware valuation
+- Buy score (next-entry rank) vs Quality score (full checklist)
+- Live WebSocket dashboard + sparklines
+- On-demand full-engine analysis for *any* ticker (search box reuses 100% of the same engine)
+- **My List** watch with local persistence + score history
+- **S+ Radar** for named legend/politician/FII activity
+- In-app + browser alerts for high-conviction setups, new smart money hits, pre-earnings catalysts
+- Auto trade thesis + risk bullets + local position sizer from the factor breakdown
+- CSV export + Markdown thesis copy
+- SQLite snapshots for historical edge / backtest views (/api/edge) + per-symbol score history
+- Rich factor checklist modal (pass/fail/risk/weight/tier/description) with filters
 
 ## Quick start
 
@@ -103,10 +111,13 @@ To scan **more** symbols, add tickers to the extra files or set `batch_size` / `
 |----------|-------------|
 | `GET /` | Dashboard UI |
 | `GET /api/snapshot` | Full hot list + news |
-| `GET /api/symbol/{SYM}` | One symbol |
+| `GET /api/symbol/{SYM}` or `/api/analyze/{SYM}` | Full engine analysis for any ticker (reuses the 140-factor path) |
 | `GET /api/news` | Stored + live news |
 | `GET /api/earnings?days=7` | Earnings in next N days |
-| `WS /ws` | Real-time updates |
+| `GET /api/edge?days=2&min_score=55` | Recent strong snapshots for backtest/edge validation |
+| `GET /api/snapshots/{SYM}` | Per-symbol snapshot history (score curves) |
+| `GET /api/factors` | Catalog + weights + smart money registry |
+| `WS /ws` | Real-time updates (used for alerts + live UI) |
 
 ## Database & disk usage
 
@@ -134,6 +145,19 @@ Tune in `config.yaml` if you want longer history or more aggressive cleanup.
 2. Add Redis for multi-worker scaling.
 3. Add sentiment NLP on headlines.
 4. Add earnings calendar API.
+
+## New trader experience features (implemented)
+
+- My List (watch + local score history + deltas)
+- S+ Radar (named smart money / politician / FII live feed)
+- Alerts (in-app bell + browser Notification for high buy, new S+, pre-earnings, bursts)
+- Auto Trade Thesis + risks + local position sizer in every detail/analysis
+- Export (CSV hot/watch) + one-click Markdown thesis copy for journals
+- Enhanced gauges (high-conviction count, S+ hits, news activity)
+- Keyboard power: / search, w=watch, f=factors, e=export
+- PWA manifest (installable)
+- /api/edge + /api/snapshots for historical validation / backtesting of the engine signals
+- More India catalyst patterns (bulk/block, promoter stake)
 
 ## Disclaimer
 
