@@ -29,6 +29,8 @@ rm -rf .venv
 
 Open **http://127.0.0.1:8765**
 
+> **Want a public version right now?** The maintainers deploy this repo to Railway/Render so anyone can use the live scanner at a public URL (see deployment section below). You can also deploy your own instance in ~5 minutes.
+
 **Note on universe size & earnings:** The app now uses an expanded static fallback + Wikipedia scrape (requires `lxml`). With a fuller list of liquid names the "Earnings (7d)" list will surface more names when they have calendar data. In any 7-day window only a modest number of companies report — that's normal. Add tickers to `data/us_extra.txt` / `data/india_extra.txt` to watch more.
 
 ## GitHub
@@ -37,14 +39,57 @@ Source code: https://github.com/jaideeppyne/market-pulse
 
 This repo contains the full application (backend + frontend). The "website" (dashboard) requires the Python server to be running.
 
-### Deploy the live app
+### Deploy the live app (so anyone can use the website) — Completely Free
 
-The full experience (live crawlers + WebSocket updates) needs a server:
+The full experience (live crawlers + WebSocket updates + any-ticker analysis) needs a server that stays up 24/7.
 
-- **Easiest (recommended)**: [Render](https://render.com), [Railway](https://railway.app), or [Fly.io](https://fly.io)
-- Use the included `Dockerfile` + `docker-compose.yml`
-- Set environment as needed (no secrets required for the free data sources)
-- The server listens on port 8765 by default (configurable in `config.yaml`)
+#### Best Completely Free Option: Oracle Cloud Always Free
+
+Oracle gives you **truly always-free** resources that never expire (no credit card tricks after 12 months).
+
+**What you get for $0 forever:**
+- Up to 4 cores + 24 GB RAM (ARM) or AMD micro instances
+- 200 GB storage
+- 10 TB bandwidth/month
+- Public IP
+
+**Full guided deployment (I prepared everything for you):**
+
+See the complete Oracle guide here: [deploy/ORACLE_DEPLOY.md](deploy/ORACLE_DEPLOY.md)
+
+It includes:
+- A one-command setup script (`deploy/oracle-setup.sh`)
+- Oracle-optimized `docker-compose.oracle.yml` (persistent DB + tuned for free tier)
+- Exact clicks in Oracle Console
+- Security list rules
+- Update commands
+
+**Quick start after creating your Oracle VM:**
+```bash
+wget https://raw.githubusercontent.com/jaideeppyne/market-pulse/main/deploy/oracle-setup.sh
+chmod +x oracle-setup.sh
+./oracle-setup.sh
+```
+
+Then just add one Ingress rule for port 8765 in the Security List (detailed in the guide).
+
+Your public site will be live at `http://YOUR_ORACLE_IP:8765`
+
+#### Other Platforms (have free tiers with limits)
+
+- **Railway**: Connect GitHub → add Volume at `/app/data` → optional env vars for tuning.
+- **Render**: Use the included `render.yaml` + add a Disk at `/app/data`.
+- Local/VPS: `docker compose up -d --build`
+
+**Important for any public instance:**
+- Persistent storage for `data/market_pulse.db` is required (otherwise you lose all history on restart).
+- Tune the scanners for low usage: `PRICE_SCAN_INTERVAL_SEC=180`, higher `HOT_SCORE_THRESHOLD`.
+- No secrets or paid APIs are needed.
+
+**One-command local Docker (testing):**
+```bash
+docker compose up -d --build
+```
 
 ### GitHub Pages (UI only)
 

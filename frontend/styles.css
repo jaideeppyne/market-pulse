@@ -801,3 +801,51 @@ body.modal-open { overflow: hidden; }
 
 .btn.small { font-size:0.78rem; padding:0.2rem 0.5rem; }
 .btn.danger { border-color:#ef4444; color:#ef4444; }
+
+/* Conviction / Analyze overhaul: positives, negatives, verdict, whale intel */
+.conviction-verdict {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  margin: 0.35rem 0 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+.conviction-verdict.bull { background: rgba(34,197,94,0.12); color: #86efac; border-color: rgba(34,197,94,0.3); }
+.conviction-verdict.watch { background: rgba(245,158,11,0.12); color: #fcd34d; border-color: rgba(245,158,11,0.3); }
+.conviction-verdict.avoid { background: rgba(239,68,68,0.1); color: #fca5a5; border-color: rgba(239,68,68,0.25); }
+
+.positives, .negatives {
+  margin: 0.35rem 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+.positives { background: rgba(34,197,94,0.06); border: 1px solid rgba(34,197,94,0.2); }
+.negatives { background: rgba(239,68,68,0.05); border: 1px solid rgba(239,68,68,0.18); }
+.positives h4, .negatives h4 { margin: 0 0 0.25rem; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.03em; }
+.positives ul, .negatives ul { margin: 0; padding-left: 1.1rem; }
+.positives li { color: #86efac; margin: 0.1rem 0; }
+.negatives li { color: #fca5a5; margin: 0.1rem 0; }
+
+.whale-intel {
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 6px;
+  padding: 0.45rem 0.55rem;
+  margin: 0.4rem 0;
+  font-size: 0.78rem;
+}
+.whale-intel h4 { margin: 0 0 0.25rem; color: #fcd34d; font-size: 0.72rem; }
+.whale-hit { display: block; margin: 0.15rem 0; padding-left: 0.2rem; border-left: 2px solid rgba(245,158,11,0.5); }
+.whale-hit .name { font-weight: 700; color: #fde68a; }
+.whale-hit .ctx { color: var(--muted); font-size: 0.72rem; display: block; margin-top: 0.1rem; }
+
+.clickable { cursor: pointer; }
+.clickable:hover { text-decoration: underline; }
+.score-pill.clickable:hover, .qual-pill.clickable:hover { filter: brightness(1.15); }
+
+.stat-card.clickable { cursor: pointer; }
+.stat-card.clickable:hover { border-color: var(--accent); background: rgba(56,189,248,0.06); }
+
+.spark-large { cursor: pointer; }

@@ -268,7 +268,7 @@
     // Immediate visible feedback so the "analyze" feels responsive
     // (on-demand fetch can take several seconds)
     detailTitle.textContent = q;
-    detailEl.innerHTML = `<div class="detail-empty"><p>Analyzing ${escapeHtml(q)} with the full engine…</p><p class="muted">Fetching 6mo history, fundamentals, running 100+ factors, news intel, etc.</p></div>`;
+    detailEl.innerHTML = `<div class="detail-empty"><p>Deep-analyzing ${escapeHtml(q)} with the full 140-factor engine…</p><p class="muted">yfinance history + info (fundamentals, targets, margins, etc) + live news titles + smart money registry + sector valuation + technical indicators + weighted buy/quality scoring. Positives, risks, and conviction verdict will appear below + full factors modal will open.</p></div>`;
 
     if (activeTab !== "hot") {
       document.querySelector('.tab[data-tab="hot"]')?.click();
@@ -457,6 +457,13 @@
           (CATEGORY_SORT.indexOf(b) === -1 ? 99 : CATEGORY_SORT.indexOf(b))
       );
 
+      // New: conviction summary at top of modal so Analyze feels insightful immediately
+      const pn = buildPositivesAndNegatives(row);
+      const verdict = getConvictionVerdict(row);
+      const modalConv = `<div class="conviction-verdict ${verdict.cls}" style="margin-bottom:0.5rem">${escapeHtml(verdict.text)}</div>`;
+      const modalPos = pn.positives.length ? `<div class="positives" style="margin-bottom:0.3rem"><h4>✓ Positives</h4><ul style="margin:0;padding-left:1rem;font-size:0.78rem">${pn.positives.map(p=>`<li>${escapeHtml(p)}</li>`).join("")}</ul></div>` : "";
+      const modalNeg = pn.negatives.length ? `<div class="negatives" style="margin-bottom:0.4rem"><h4>✗ Risks</h4><ul style="margin:0;padding-left:1rem;font-size:0.78rem">${pn.negatives.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ul></div>` : "";
+
       const summary = `<div class="factor-summary">
         <span class="fs pass">${passed.length} passed</span>
         <span class="fs fail">${failed.length} failed</span>
@@ -477,7 +484,7 @@
         })
         .join("");
 
-      factorModalBody.innerHTML = summary + topBlock + sections;
+      factorModalBody.innerHTML = modalConv + modalPos + modalNeg + summary + topBlock + sections;
     } catch (err) {
       console.error("factor modal render", err);
       factorModalBody.innerHTML = `<p class="modal-err">Error rendering factors: ${escapeHtml(String(err.message || err))}</p>`;
@@ -572,6 +579,156 @@
     if (!hasCatalyst && !hasSM) risks.push("Limited fresh catalyst in current news window");
 
     return { bullets: bullets.slice(0,5), archetype, risks: risks.slice(0,3) };
+  }
+
+  /** Build clear positives vs negatives for conviction (used in detail + modal summary) */
+  function buildPositivesAndNegatives(row) {
+    if (!row) return { positives: [], negatives: [] };
+    const m = row.metrics || {};
+    const bd = row.factor_breakdown || m.factor_breakdown || [];
+    const pos = [];
+    const neg = [];
+
+    // S+ / smart money is the strongest positive signal
+    if (m.smart_money?.hits?.length) {
+      const names = m.smart_money.hits.map(h => h.name).slice(0,4).join(", ");
+      pos.push(`S+ smart money: ${names} (heavy 6.5× weight in buy score)`);
+    } else if (hasSmartMoneySignal(row)) {
+      pos.push("Named whale / politician / FII buy context detected in news");
+    }
+
+    // Strong entry setups
+    const entryHits = bd.filter(f => f.category === "entry" && f.status === "pass");
+    if (entryHits.length >= 2) pos.push(`${entryHits.length} entry factors (room to run, base, higher lows, pullback, compression)`);
+    else if (entryHits.length === 1) pos.push("At least one clean entry setup (not chasing highs)");
+
+    // Catalysts
+    const catHits = bd.filter(f => (f.category === "catalyst" || f.category === "news") && f.status === "pass");
+    if (catHits.length) pos.push(`Catalyst(s): ${catHits.slice(0,3).map(f=>f.name||f.id).join(" · ")}`);
+
+    // Quality fundamentals / valuation
+    const fundHits = bd.filter(f => (f.category === "fundamental" || f.category === "valuation") && f.status === "pass");
+    if (fundHits.length >= 3) pos.push("Solid fundamentals + sector-reasonable valuation");
+    else if (fundHits.length) pos.push("Multiple fundamental / valuation checks passing");
+
+    // Technical health
+    if (bd.some(f => ["ma_bull_stack","rsi_bull_zone","macd_bullish","golden_cross_zone"].includes(f.id) && f.status==="pass"))
+      pos.push("Constructive technicals (MA stack / momentum turning)");
+
+    // High buy score
+    const bs = m.buy_score ?? row.score ?? 0;
+    if (bs >= 72) pos.push("High buy score – engine sees favorable next-entry risk/reward");
+    else if (bs >= 55) pos.push("Decent buy score with some supporting factors");
+
+    // === NEGATIVES / RISKS ===
+    const riskHits = bd.filter(f => f.status === "risk" || f.category === "risk");
+    riskHits.forEach(f => {
+      if (["extended_run","chase_risk","already_at_high","parabolic_move"].includes(f.id))
+        neg.push("Extended / near 52w high – limited upside, chase risk");
+      else if (f.id === "rsi_overbought") neg.push("RSI overbought – momentum exhaustion risk");
+      else if (f.id === "high_short") neg.push("Elevated short interest – potential squeeze or overhang");
+      else if (f.id === "distribution_day") neg.push("Distribution day (down on heavy volume)");
+      else neg.push(f.name || f.id);
+    });
+
+    if (m.is_extended) neg.push("Price extended – engine applies penalty to buy score");
+    if ((m.pct_52w_range || 0) > 92) neg.push("Trading in top ~8% of 52-week range");
+
+    const failCount = bd.filter(f => f.status === "fail").length;
+    if (failCount > 8) neg.push(`${failCount} checklist items not met (many fundamentals or technicals missing)`);
+
+    if (!catHits.length && !m.smart_money?.hits?.length) neg.push("No fresh named catalyst or smart-money signal in recent headlines");
+
+    // Dedup + limit for UI
+    const uniqPos = [...new Set(pos)].slice(0, 6);
+    const uniqNeg = [...new Set(neg)].slice(0, 5);
+    return { positives: uniqPos, negatives: uniqNeg };
+  }
+
+  /** Plain-English verdict to help decide buy / watch / avoid */
+  function getConvictionVerdict(row) {
+    if (!row) return { text: "No data", cls: "watch" };
+    const m = row.metrics || {};
+    const bs = m.buy_score ?? row.score ?? 0;
+    const qs = m.quality_score ?? 0;
+    const sm = !!(m.smart_money?.hits?.length || hasSmartMoneySignal(row));
+    const ext = !!m.is_extended;
+    const entry = (row.factor_breakdown || []).filter(f => f.category === "entry" && f.status === "pass").length;
+
+    if (sm && bs >= 65 && !ext && entry >= 1) {
+      return { text: "Strong S+ early setup – favor on pullbacks or confirmation. High-conviction candidate for small starter position.", cls: "bull" };
+    }
+    if (sm && bs >= 50) {
+      return { text: "Whale / politician activity + decent setup. Watch closely for entry; size small because of news sensitivity.", cls: "bull" };
+    }
+    if (bs >= 72 && !ext) {
+      return { text: "High buy score, clean entry zone – engine likes risk/reward for next leg. Consider scaling in on dips.", cls: "bull" };
+    }
+    if (bs >= 55 && qs >= 60 && !ext) {
+      return { text: "Solid multi-factor setup with acceptable quality. Good for watchlist; wait for better entry or more catalyst.", cls: "watch" };
+    }
+    if (ext || (m.pct_52w_range || 0) > 93) {
+      return { text: "Extended near highs – buy score penalized. Better to wait for base / pullback or avoid new adds.", cls: "avoid" };
+    }
+    if (bs < 40) {
+      return { text: "Low conviction on current data. Weak entry factors or many risks. Skip or deep research only.", cls: "avoid" };
+    }
+    return { text: "Mixed signals. Quality name or some catalysts but entry not ideal yet. Add to My List and monitor.", cls: "watch" };
+  }
+
+  /** Rich whale / S+ details modal or inline panel (click any whale badge) */
+  function showSmartMoneyDetails(symbol, row) {
+    const m = (row && row.metrics) || {};
+    const hits = m.smart_money?.hits || [];
+    const primary = m.smart_money?.primary_alert || (row && row.alerts && row.alerts.find(a => /LEGEND|WHALE|POLITICIAN|FOREIGN/i.test(a))) || "Smart money signal";
+
+    let html = `<div class="whale-intel"><h4>🐳 S+ Smart Money Intel — ${escapeHtml(symbol)}</h4>`;
+    if (hits.length) {
+      hits.forEach(h => {
+        html += `<div class="whale-hit">
+          <span class="name">${escapeHtml(h.name)}</span> <span class="muted">(${escapeHtml(h.kind || "")}, tier ${escapeHtml(h.tier || "S+")})</span>
+          <span class="ctx">${escapeHtml(h.headline || "Matched in recent news with buy context")}</span>
+        </div>`;
+      });
+    } else {
+      html += `<div class="muted">Named smart money / politician / FII buy context flagged in headlines (S+ tier in engine).</div>`;
+    }
+    html += `<div style="margin-top:0.35rem;font-size:0.72rem;color:var(--muted)">S+ names multiply their factor weight by 6.5× in the buy_score calculation. This is the single heaviest boost the algorithm applies. Click “Analyze” or “Full factors” for the complete weighted breakdown.</div>`;
+    html += `<div style="margin-top:0.3rem;display:flex;gap:0.35rem;flex-wrap:wrap">`;
+    html += `<button class="tiny" data-act="analyze">Full Analyze</button>`;
+    html += `<button class="tiny" data-act="factors">Full factors checklist</button>`;
+    html += `<button class="tiny" data-act="watch">★ Watch</button>`;
+    html += `</div></div>`;
+
+    // Reuse alerts-panel style or create a floating intel card
+    const card = document.createElement("div");
+    card.className = "alerts-panel";
+    card.style.bottom = "auto";
+    card.style.top = "90px";
+    card.innerHTML = `<div class="ap-header"><strong>Whale / S+ Details</strong> <button class="close-x">×</button></div><div class="ap-body">${html}</div>`;
+    document.body.appendChild(card);
+
+    card.querySelector(".close-x").onclick = () => card.remove();
+    card.onclick = (e) => { if (e.target === card) card.remove(); };
+
+    const sym = symbol;
+    card.querySelectorAll("button").forEach(btn => {
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        const act = btn.dataset.act;
+        card.remove();
+        if (act === "analyze") {
+          document.querySelector('.tab[data-tab="hot"]')?.click();
+          fetchFullSymbol(sym).then(full => { renderDetail(full); openFactorModal(sym, lastData); }).catch(()=>{});
+        } else if (act === "factors") {
+          openFactorModal(sym, lastData);
+        } else if (act === "watch") {
+          const r = findRow(sym, lastData);
+          if (watchlist.some(w => w.symbol === sym)) removeFromWatch(sym); else addToWatch(sym, r || {symbol: sym});
+          renderWatch(lastData);
+        }
+      };
+    });
   }
 
   function pushAlert(type, symbol, msg, score) {
@@ -691,15 +848,18 @@
         if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
           document.querySelector('.tab[data-tab="hot"]')?.click();
           if (symbolSearch) symbolSearch.value = sym;
-          // trigger full analyze path
-          const fake = { preventDefault:()=>{} };
-          // reuse existing run but directly
           fetchFullSymbol(sym).then(full => {
             renderDetail(full);
             openFactorModal(sym, data || lastData);
           }).catch(()=>{});
         }
       };
+      // Click whale badge text in radar → rich S+ details
+      const badge = row.querySelector(".whale-badge");
+      if (badge) {
+        badge.style.cursor = "pointer";
+        badge.onclick = (ev) => { ev.stopPropagation(); showSmartMoneyDetails(row.dataset.symbol, findRow(row.dataset.symbol, data) || {symbol: row.dataset.symbol}); };
+      }
     });
   }
 
@@ -1061,16 +1221,38 @@
     const newsBurst = (data?.news || []).length;
 
     statsBar.innerHTML = `
-      <div class="stat-card"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
+      <div class="stat-card clickable" data-stat="highconv" title="Click to filter hot list to high-conviction names only"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
+      <div class="stat-card clickable" data-stat="whale" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
       <div class="stat-card"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
-      <div class="stat-card"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
-      <div class="stat-card"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
+      <div class="stat-card"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
       <div class="stat-card"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
-      <div class="stat-card"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
+      <div class="stat-card clickable" data-stat="sectors" title="Go to Sectors tab"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
       <div class="stat-card"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
       <div class="stat-card"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
       <div class="stat-card"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
     `;
+
+    // Quick filter actions from stats
+    statsBar.querySelectorAll(".stat-card.clickable").forEach(card => {
+      card.addEventListener("click", () => {
+        const st = card.dataset.stat;
+        if (st === "whale") {
+          whaleOnly = !whaleOnly;
+          const chip = document.getElementById("whaleOnlyChip");
+          if (chip) { chip.classList.toggle("active", whaleOnly); chip.dataset.whale = whaleOnly ? "1" : "0"; }
+          renderHot(lastData);
+        } else if (st === "highconv") {
+          // temporary earlyOnly + high filter via search hint
+          const q = symbolSearch; if (q) q.value = "";
+          earlyOnly = true;
+          const eChip = document.getElementById("earlyOnlyChip");
+          if (eChip) { eChip.classList.add("active"); eChip.dataset.early = "1"; }
+          renderHot(lastData);
+        } else if (st === "sectors") {
+          document.querySelector('.tab[data-tab="sectors"]')?.click();
+        }
+      });
+    });
   }
 
   function rowFlashClass(symbol, rank, score) {
@@ -1119,21 +1301,22 @@
         const qual = m.quality_score ?? "—";
         const whale = smartMoneyBadges(r);
         const watched = watchlist.some(w => w.symbol === r.symbol) ? "★" : "☆";
+        const whaleClickable = whale ? ` <span class="whale-badge clickable" data-whale-sym="${attrEsc(r.symbol)}" title="Click for who / headline / why S+ 6.5× boost">${whale.replace(/<[^>]+>/g,'')}</span>` : "";
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong>${r.symbol}</strong>${ext}${whale}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
-          <td><span class="score-pill">${buy}</span></td>
-          <td><span class="qual-pill">${qual}</span></td>
+          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${whaleClickable}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
+          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span></td>
+          <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
-          <td class="${cls}">${day > 0 ? "+" : ""}${day}%</td>
-          <td>${m.rvol ?? "—"}x</td>
-          <td>${sparklineSvg(r.sparkline)}</td>
+          <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
+          <td class="clickable" data-act="factors" title="Relative volume (today vs 10d avg). ≥1.6-2.5× surges are strong volume factors in the engine.">${m.rvol ?? "—"}x</td>
+          <td class="clickable" data-act="reanalyze" title="Click chart to re-run full engine on latest prices/news">${sparklineSvg(r.sparkline)}</td>
         </tr>`;
       })
       .join("");
 
     hotBody.querySelectorAll("tr").forEach((tr) => {
       tr.addEventListener("click", (ev) => {
-        if (ev.target.closest(".factor-pill")) return;
+        if (ev.target.closest(".factor-pill") || ev.target.closest(".tiny-watch") || ev.target.closest("[data-whale-sym]") || ev.target.closest("[data-act]")) return;
         selectSymbol(tr.dataset.symbol, data);
       });
     });
@@ -1152,6 +1335,29 @@
         else addToWatch(sym, row || {symbol: sym});
         renderHot(data);
         if (activeTab === "watch") renderWatch(data);
+      });
+    });
+    // New: score / day / rvol / spark clicks → factors or re-analyze
+    hotBody.querySelectorAll("[data-act]").forEach(el => {
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sym = el.closest("tr")?.dataset.symbol;
+        const act = el.dataset.act;
+        if (act === "factors") openFactorModal(sym, data);
+        else if (act === "reanalyze" && sym) {
+          fetchFullSymbol(sym).then(full => { renderDetail(full); renderHot(data); }).catch(()=>{});
+        } else if (act === "select" && sym) {
+          selectSymbol(sym, data);
+        }
+      });
+    });
+    // Whale badges in table now open rich details
+    hotBody.querySelectorAll("[data-whale-sym]").forEach(el => {
+      el.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sym = el.dataset.whaleSym;
+        const r = findRow(sym, data);
+        showSmartMoneyDetails(sym, r || {symbol: sym});
       });
     });
   }
@@ -1202,31 +1408,76 @@
         <span id="sizerOut" class="muted"></span>
       </div>`;
 
+    const pn = buildPositivesAndNegatives(row);
+    const verdict = getConvictionVerdict(row);
+    const posHtml = pn.positives.length ? `<div class="positives"><h4>✓ Positives (engine drivers)</h4><ul>${pn.positives.map(p=>`<li>${escapeHtml(p)}</li>`).join("")}</ul></div>` : "";
+    const negHtml = pn.negatives.length ? `<div class="negatives"><h4>✗ Risks / Negatives (penalties & gaps)</h4><ul>${pn.negatives.map(n=>`<li>${escapeHtml(n)}</li>`).join("")}</ul></div>` : "";
+    const verdictHtml = `<div class="conviction-verdict ${verdict.cls}">${escapeHtml(verdict.text)}</div>`;
+
+    // Make whale block itself clickable for rich details
+    const clickableSmBlock = m.smart_money?.hits?.length || hasSmartMoneySignal(row)
+      ? `<div class="smart-money-block clickable" data-whale-sym="${attrEsc(row.symbol)}" title="Click for full whale / politician / FII details and why S+ matters">${smBlock}</div>`
+      : "";
+
     detailEl.innerHTML = `<div class="detail">
-      <h3>${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc analysis</span>' : ''}</h3>
+      <h3>${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc deep analysis</span>' : ''}</h3>
       <div class="meta-line">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${row.market.toUpperCase()}</div>
-      ${smBlock}
-      <div class="detail-score-row">Buy <strong class="big-score">${m.buy_score ?? row.score}</strong>
-        <span class="qual-pill">Qual ${m.quality_score ?? "—"}</span>
+      ${clickableSmBlock}
+      <div class="detail-score-row">
+        Buy <strong class="big-score clickable" data-act="factors" title="Click to see exactly which factors drove this buy score (weighted) and the full checklist">${m.buy_score ?? row.score}</strong>
+        <span class="qual-pill clickable" data-act="factors" title="Quality score = broad checklist health (fundamentals + valuation + technicals). Click for breakdown">${m.quality_score ?? "—"}</span>
         ${m.is_extended ? '<span class="ext-badge">Extended — late chase</span>' : ""}
-        <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}">${hit}/${total} factors</button>
+        <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}" title="Open the complete 100+ factor pass/fail with weights and tiers">${hit}/${total} factors</button>
       </div>
+      ${verdictHtml}
+      ${posHtml}
+      ${negHtml}
       ${thesisHtml}
       ${sizerHtml}
-      ${m.pct_52w_range != null ? `<div class="meta-line">52w range position: ${m.pct_52w_range}% · entry checks: ${m.entry_factors ?? 0}</div>` : ""}
-      <div class="spark-large">${sparklineSvg(row.sparkline, 300, 72)}</div>
-      <div class="meta-line">$${m.price} · Day ${m.day_chg_pct}% · 5d ${m.ret5d_pct}% · RVOL ${m.rvol}x · RSI ${m.rsi ?? "—"}</div>
-      <div class="meta-line">P/E ${m.pe ?? "—"} · P/B ${m.pb ?? "—"} · FCF ${m.fcf ? "✓" : "—"}</div>
+      ${m.pct_52w_range != null ? `<div class="meta-line">52w range position: ${m.pct_52w_range}% · entry checks: ${m.entry_factors ?? 0} <span class="muted">(higher = more room before extension penalty)</span></div>` : ""}
+      <div class="spark-large" title="Click sparkline to re-analyze this symbol with latest data">${sparklineSvg(row.sparkline, 300, 72)}</div>
+      <div class="meta-line clickable" data-act="factors" title="Core price/volume snapshot used by the algorithm">$${m.price} · Day ${m.day_chg_pct}% · 5d ${m.ret5d_pct}% · RVOL ${m.rvol}x · RSI ${m.rsi ?? "—"}</div>
+      <div class="meta-line">P/E ${m.pe ?? "—"} · P/B ${m.pb ?? "—"} · FCF ${m.fcf ? "✓" : "—"} · 52w pos ${m.pct_52w_range ?? "—"}%</div>
       ${alerts ? `<ul class="alerts">${alerts}</ul>` : ""}
-      <p class="muted section-label">Passed checks</p>
+      <p class="muted section-label">Top passed checks (click factors button for all + weights)</p>
       <div class="factor-chips">${factorChips || '<span class="muted">None yet</span>'}${more}</div>
+      <div style="margin-top:0.4rem"><button class="tiny" data-act="whale">🐳 Whale details</button> <button class="tiny" data-act="thesis">Copy full thesis</button> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button></div>
     </div>`;
 
     detailEl.querySelector(".detail-factor-btn")?.addEventListener("click", () => {
       openFactorModal(row.symbol, lastData);
     });
 
-    // thesis / watch actions
+    // New conviction surfaces + everything clickable
+    detailEl.querySelectorAll(".clickable").forEach(el => {
+      el.addEventListener("click", (e) => {
+        const act = el.dataset.act;
+        if (act === "factors" || el.classList.contains("big-score") || el.classList.contains("qual-pill")) {
+          openFactorModal(row.symbol, lastData);
+        }
+      });
+    });
+
+    detailEl.querySelector('[data-whale-sym]')?.addEventListener("click", () => {
+      showSmartMoneyDetails(row.symbol, row);
+    });
+
+    detailEl.querySelector(".spark-large")?.addEventListener("click", () => {
+      fetchFullSymbol(row.symbol).then(full => renderDetail(full)).catch(()=>{});
+    });
+
+    // Extra action row buttons
+    const extraBar = detailEl.querySelector('div[style*="margin-top:0.4rem"]');
+    extraBar?.querySelector('[data-act="factors"]')?.addEventListener("click", () => openFactorModal(row.symbol, lastData));
+    extraBar?.querySelector('[data-act="whale"]')?.addEventListener("click", () => showSmartMoneyDetails(row.symbol, row));
+    extraBar?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
+    extraBar?.querySelector('[data-act="watch"]')?.addEventListener("click", (e) => {
+      if (isWatched) removeFromWatch(row.symbol); else addToWatch(row.symbol, row);
+      renderDetail(row);
+      renderWatch(lastData);
+    });
+
+    // thesis / watch actions (legacy thesis block)
     const thesisBlock = detailEl.querySelector(".thesis-block");
     thesisBlock?.querySelector('[data-act="watch"]')?.addEventListener("click", (e) => {
       if (isWatched) removeFromWatch(row.symbol); else addToWatch(row.symbol, row);

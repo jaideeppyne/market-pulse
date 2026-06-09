@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -368,8 +369,9 @@ def run():
 
     cfg = load_config()
     host = cfg.get("server", {}).get("host", "0.0.0.0")
-    port = cfg.get("server", {}).get("port", 8765)
-    uvicorn.run("app.main:app", host=host, port=port, reload=False)
+    # PORT env var takes precedence (standard on Railway, Render, Fly.io, Heroku, etc.)
+    port = int(os.getenv("PORT") or cfg.get("server", {}).get("port", 8765))
+    uvicorn.run("app.main:app", host=host, port=port, reload=False, proxy_headers=True)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: market-pulse
+    env: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+    disk:
+      name: market-pulse-data
+      mountPath: /app/data
+      sizeGB: 1
+    autoDeploy: true

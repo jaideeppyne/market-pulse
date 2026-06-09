@@ -6,8 +6,11 @@ from pathlib import Path
 
 import aiosqlite
 
+import os
+
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "market_pulse.db"
+_default_db = ROOT / "data" / "market_pulse.db"
+DB_PATH = Path(os.getenv("DB_PATH", _default_db))
 
 
 async def init_db() -> None:
