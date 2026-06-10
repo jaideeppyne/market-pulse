@@ -7,7 +7,7 @@ import pandas as pd
 
 from app.engine.context import ScanContext
 from app.engine.factor_registry import evaluate_factors
-from app.engine.indicators import cup_handle_score, rsi
+from app.engine.indicators import cup_handle_score, ma_support_resistance, rsi
 
 
 @dataclass
@@ -56,6 +56,15 @@ def analyze_symbol(
     metrics["cup_meta"] = ch_meta
     r = rsi(hist["Close"])
     metrics["rsi"] = round(r, 1) if r else metrics.get("rsi")
+
+    # Simple DMA/EMA support/resistance levels + signal (user-friendly tech that works)
+    try:
+        tech = ma_support_resistance(hist["Close"])
+        metrics["tech_levels"] = tech.get("levels", {})
+        metrics["tech_signal"] = tech.get("signal")
+        metrics["key_ma_support_res"] = tech  # for UI
+    except Exception:
+        pass
 
     res.score = score
     res.signals = metrics.get("signals", [])

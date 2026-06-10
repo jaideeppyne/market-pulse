@@ -187,12 +187,78 @@ class AppState:
                 row["day_chg_pct"] = m.get("day_chg_pct")
                 row["name"] = m.get("name", e["symbol"])
                 enriched.append(row)
-            enriched.sort(key=lambda x: (x.get("days_until", 99), -(x.get("score") or 0)))
-            self.earnings = enriched
-            self.earnings_by_symbol = {e["symbol"]: e for e in enriched}
-            self.stats["earnings_upcoming"] = len(enriched)
+            # Merge news-driven earnings buzz directly into the main list.
+            # This is critical for Indian companies: yf calendars are sparse, but news (from multiple India feeds)
+            # frequently mentions "results", "Q1 results", "to announce earnings" etc.
+            # By merging here, the earnings section gets many more items (not just the 2 from yf).
+            buzz = self._generate_earnings_buzz()
+            seen = {e["symbol"] for e in enriched}
+            for b in buzz:
+                if b.get("symbol") not in seen:
+                    enriched.append(b)
+            enriched.sort(key=lambda x: (x.get("days_until", 99) or 99, -(x.get("score") or 0)))
+            self.earnings = enriched[:120]
+            self.earnings_by_symbol = {e["symbol"]: e for e in self.earnings}
+            self.stats["earnings_upcoming"] = len(self.earnings)
             self.stats["last_earnings_scan"] = datetime.now(timezone.utc).isoformat()
         self.broadcast_event.set()
+
+    def _generate_earnings_buzz(self) -> list[dict[str, Any]]:
+        """Aggressive news-based earnings detection.
+        Scans recent news (populated by multi-website RSS + Google News including new India earnings feeds)
+        for any mention of results/earnings/Qx for tagged symbols.
+        Creates 'from_news' entries so Indian companies show up even when yf has no calendar data.
+        Includes simple date parsing for titles containing 'on 15 Jul' etc.
+        """
+        buzz = []
+        seen = set()
+        # Very broad to catch Indian media phrasing: "results", "Q1 results", "earnings", "declare results", "to announce"
+        earn_kw = re.compile(r"result|earn|q[1-4]|declare|announce|guidance|beat|to report|earnings today|results today", re.I)
+        date_re = re.compile(r"(?:on|results?\s*(?:on|date|scheduled for)?)\s*(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|July|June)?|(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.I)
+        today = datetime.now(timezone.utc).date()
+        for n in (self.news or [])[:200]:
+            title = n.get("title") or ""
+            title_lower = title.lower()
+            if not earn_kw.search(title) and "result" not in title_lower and "q1" not in title_lower and "q2" not in title_lower:
+                continue
+            for s in (n.get("symbols") or []):
+                if s in seen:
+                    continue
+                seen.add(s)
+                days_until = None
+                ed_str = "news"
+                m = date_re.search(title)
+                if m:
+                    try:
+                        day = int(m.group(1) or m.group(3))
+                        mon_str = (m.group(2) or m.group(4) or "").lower()[:3]
+                        mon_map = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,"jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
+                        mon = mon_map.get(mon_str, today.month)
+                        ed = date(today.year, mon, min(max(day,1),28))
+                        if ed < today:
+                            ed = date(today.year + (1 if mon <= today.month else 0), mon, min(max(day,1),28))
+                        days_until = (ed - today).days
+                        ed_str = ed.isoformat()
+                    except Exception:
+                        pass
+                is_india = bool(s.endswith(".NS") or s.endswith(".BO"))
+                buzz_item = {
+                    "symbol": s,
+                    "market": "india" if is_india else "us",
+                    "earnings_date": ed_str,
+                    "days_until": days_until,
+                    "eps_avg": None,
+                    "score": (self.symbols.get(s) or {}).get("score"),
+                    "name": ((self.symbols.get(s) or {}).get("metrics") or {}).get("name", s),
+                    "day_chg_pct": ((self.symbols.get(s) or {}).get("metrics") or {}).get("day_chg_pct"),
+                    "from_news": True,
+                    "news_title": title[:95],
+                }
+                buzz.append(buzz_item)
+        # Strongly favor Indian items so .NS companies appear
+        india = [b for b in buzz if b["market"] == "india"]
+        other = [b for b in buzz if b["market"] != "india"]
+        return india[:50] + other[:20]
 
     async def snapshot(self, *, light: bool = False) -> dict[str, Any]:
         async with self.lock:
@@ -204,27 +270,55 @@ class AppState:
                 hot_bm = {k: [self._slim_scan_row(r) for r in v] for k, v in hot_bm.items()}
             # Augment calendar earnings with symbols that have strong recent "earnings" buzz in news
             # (helps the list feel less sparse when yf calendars only have a few entries for the window)
+            # Next-level: better India support + simple date extraction from titles for "results on 12 Jul" etc.
             buzz = []
             seen = {e["symbol"] for e in self.earnings}
-            earn_kw = re.compile(r"earn|result|beat|guidance|q[1-4]", re.I)
-            for n in self.news[:80]:
-                if earn_kw.search(n.get("title", "")) or "earnings" in (n.get("title", "") + " ".join(n.get("symbols", []))).lower():
+            # Broad keywords + India specific ("results", "Q1", "to announce", "declare results")
+            earn_kw = re.compile(r"earn|result|beat|guidance|q[1-4]|declare|announce|to report", re.I)
+            # Simple date extractor for news titles (supports India "15 Jul", "July 12", "on 12th")
+            date_re = re.compile(r"(?:on|results?\s*(?:on|date)?)\s*(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|July|June|Sept)?|(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", re.I)
+            today = datetime.now(timezone.utc).date()
+            for n in self.news[:120]:  # more news for better coverage
+                title = n.get("title", "")
+                if earn_kw.search(title) or any(k in title.lower() for k in ["earnings", "results", "q1", "q2", "q3", "q4"]):
                     for s in (n.get("symbols") or []):
                         if s not in seen:
                             seen.add(s)
+                            # Try to parse a date for better "upcoming" display
+                            days_until = None
+                            ed_str = "news"
+                            m = date_re.search(title)
+                            if m:
+                                try:
+                                    day = int(m.group(1) or m.group(3))
+                                    mon_str = (m.group(2) or m.group(4) or "").lower()[:3]
+                                    mon_map = {"jan":1,"feb":2,"mar":3,"apr":4,"may":5,"jun":6,"jul":7,"aug":8,"sep":9,"oct":10,"nov":11,"dec":12}
+                                    mon = mon_map.get(mon_str, today.month)
+                                    # Assume current or next month if past
+                                    ed = date(today.year, mon, min(day, 28))
+                                    if ed < today:
+                                        ed = date(today.year + (1 if mon < today.month else 0), mon, min(day,28))
+                                    days_until = (ed - today).days
+                                    ed_str = ed.isoformat()
+                                except:
+                                    pass
+                            is_india = s.endswith(".NS")
                             buzz.append({
                                 "symbol": s,
-                                "market": "us" if not s.endswith(".NS") else "india",
-                                "earnings_date": "news",
-                                "days_until": None,
+                                "market": "india" if is_india else "us",
+                                "earnings_date": ed_str,
+                                "days_until": days_until,
                                 "eps_avg": None,
                                 "score": (self.symbols.get(s) or {}).get("score"),
                                 "name": ( (self.symbols.get(s) or {}).get("metrics") or {} ).get("name", s),
                                 "day_chg_pct": ( (self.symbols.get(s) or {}).get("metrics") or {} ).get("day_chg_pct"),
                                 "from_news": True,
-                                "news_title": n.get("title", "")[:80],
+                                "news_title": title[:90],
                             })
-            aug_earnings = list(self.earnings[:80]) + buzz[:20]  # cap the buzz add-ons
+            # More buzz for India (to compensate for weaker yf calendar coverage on .NS)
+            india_buzz = [b for b in buzz if b["market"] == "india"]
+            us_buzz = [b for b in buzz if b["market"] == "us"]
+            aug_earnings = list(self.earnings[:60]) + india_buzz[:30] + us_buzz[:15]
 
             return {
                 "started_at": self.started_at,

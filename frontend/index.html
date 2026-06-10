@@ -42,6 +42,7 @@
     <div class="toolbar">
       <input type="search" id="symbolSearch" placeholder="Filter hot list or type any ticker (NVDA, RELIANCE, TSLA, SBIN.NS…)" autocomplete="off" />
       <button type="button" id="analyzeBtn" class="btn" title="Run the full 100+ factor engine + scoring + news intel on any stock (on-demand, same as the live scanner)">Analyze</button>
+      <button type="button" id="discoverBtn" class="btn small" title="Scrap multiple websites + large static pools for many more listed US/India names, run deep engine on-demand, surface new high-conviction 'discoveries' (aggressive full discovery beyond regular hot universe)">🔍 Scan More / Discover</button>
       <div class="market-filters">
         <button type="button" class="chip active" data-market="all">All</button>
         <button type="button" class="chip" data-market="us">US</button>
@@ -61,7 +62,7 @@
     </div>
     <div class="split">
       <section class="panel table-panel">
-        <p class="panel-hint" id="hotHint">Live ranking — click Factors pill for full checklist.</p>
+        <p class="panel-hint" id="hotHint">Live ranking — click Factors pill for full checklist. Use 🔍 Scan More / Discover for aggressive multi-website + large-pool deep scans (hundreds more listed names beyond regular universe).</p>
         <div class="table-wrap">
           <table id="hotTable">
             <thead>
@@ -158,7 +159,7 @@
   <main class="tab-panel" id="panel-earnings" hidden>
     <section class="panel">
       <h2>Earnings &amp; results (calendar + recent news buzz) <span class="hint" id="earningsCount"></span></h2>
-      <p class="panel-hint">Stocks reporting soon — click row to open in Hot Movers</p>
+      <p class="panel-hint">Stocks reporting soon (calendar + news buzz from multiple sources). Now includes more India .NS via enhanced scraping (Moneycontrol, ET, Google India earnings). Click row for full analysis + new simple DMA/EMA support/resistance signals.</p>
       <div class="table-wrap">
         <table id="earningsTable">
           <thead>

@@ -21,7 +21,8 @@ earnings:
   batch_delay_sec: 0.4
 
 scanner:
-  # Full universe scan interval (seconds). Lower = faster but more API load.
+  # Full universe scan interval (seconds). Lower = faster but more API load / yf rate risk.
+  # On free Oracle: keep higher (see deploy/docker-compose.oracle.yml overrides).
   price_scan_interval_sec: 90
   # Hot-list price-only refresh (day %, sparkline) between full scans
   quick_price_interval_sec: 45
@@ -29,13 +30,21 @@ scanner:
   news_scan_interval_sec: 90
   # Rank hot list by buy_score (entry-first). quality_score kept for reference.
   ranking_mode: buy_score
-  # Symbols per batch for yfinance (avoid rate limits)
+  # Symbols per batch for yfinance (avoid rate limits). For more aggressive live coverage raise batch carefully + add delay.
   batch_size: 40
   batch_delay_sec: 0.35
   # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50)
   hot_score_threshold: 38
   # How many top movers to broadcast (per market + global cap)
   top_n: 200
+
+  # Discovery / "Scan More" on-demand (triggered from UI button) can be more aggressive
+  # because it is user-initiated and limited per call (see /api/discover).
+  discovery_batch_size: 20
+  discovery_delay_sec: 0.25
+  # Max extra symbols to pull from the big multi-source pool (wiki scrapes + huge static + data/*.txt) per discovery click.
+  discovery_extra_per_call: 200
+  discovery_min_score: 32
 
 markets:
   us:
@@ -96,6 +105,19 @@ news:
       market: "us"
     - name: "Google News India - Markets & Results"
       url: "https://news.google.com/rss/search?q=earnings+OR+results+OR+%22block+deal%22+OR+promoter+OR+FII+OR+%22QIP%22+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    # Next-level India earnings scraping - multiple sites for better .NS coverage
+    - name: "Moneycontrol Results"
+      url: "https://www.moneycontrol.com/rss/results.xml"
+      market: "india"
+    - name: "Economic Times Earnings"
+      url: "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"
+      market: "india"
+    - name: "Business Standard Corporate"
+      url: "https://www.business-standard.com/rss/corporate-6.rss"
+      market: "india"
+    - name: "Google News India - Earnings Calendar"
+      url: "https://news.google.com/rss/search?q=%22results+on%22+OR+%22Q1+results%22+OR+%22Q2+results%22+OR+%22earnings+today%22+OR+%22to+announce+results%22+when:3d&hl=en-IN&gl=IN&ceid=IN:en"
       market: "india"
     - name: "Google News - Smart Money & Whales"
       url: "https://news.google.com/rss/search?q=(buffett+OR+berkshire+OR+ackman+OR+icahn+OR+%22cathie+wood%22+OR+ark+OR+jhunjhunwala+OR+kacholia+OR+kela+OR+damani)+ (buy+OR+bought+OR+stake+OR+accumulat)+when:1d&hl=en-US&gl=US&ceid=US:en"

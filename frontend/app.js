@@ -313,6 +313,46 @@
     }
   });
 
+  // New "Scan More / Full Discovery" - scrapes multiple sites + large pools, runs deep engine on extra listed names
+  const discoverBtn = document.getElementById("discoverBtn");
+  discoverBtn?.addEventListener("click", async () => {
+    if (!discoverBtn) return;
+    const origText = discoverBtn.textContent;
+    discoverBtn.textContent = "Scanning many sites + pools…";
+    discoverBtn.disabled = true;
+    try {
+      const res = await fetch("/api/discover?limit=60&min_score=32&extra=200");
+      const data = await res.json();
+      if (data && data.discovered && data.discovered.length) {
+        // Merge into current hot pool so they appear in the table (marked as discovered)
+        if (!lastData) lastData = {};
+        lastData.hot = lastData.hot || [];
+        const existing = new Set(lastData.hot.map(r => r.symbol));
+        let added = 0;
+        for (const d of data.discovered) {
+          if (!existing.has(d.symbol)) {
+            lastData.hot.push(d);
+            added++;
+          }
+        }
+        // Re-ingest and re-render
+        ingestHotRows(lastData);
+        renderHot(lastData);
+        const hint = document.getElementById("hotHint");
+        if (hint) hint.textContent = `Discovery added ${added} new names from multi-source larger pool (wiki scrapes + big lists + extras). Click rows/factors as usual.`;
+        // Scroll to table
+        document.querySelector(".table-wrap")?.scrollIntoView({behavior: "smooth", block: "start"});
+      } else {
+        alert("No new high-conviction discoveries right now (or rate limited). Try Analyze on specific names or wait a bit.");
+      }
+    } catch (e) {
+      alert("Discovery scan failed: " + (e.message || e));
+    } finally {
+      discoverBtn.textContent = origText;
+      discoverBtn.disabled = false;
+    }
+  });
+
   /* --- Factor modal --- */
   document.querySelectorAll("[data-close='factorModal']").forEach((el) => {
     el.addEventListener("click", () => closeFactorModal());
@@ -1302,8 +1342,9 @@
         const whale = smartMoneyBadges(r);
         const watched = watchlist.some(w => w.symbol === r.symbol) ? "★" : "☆";
         const whaleClickable = whale ? ` <span class="whale-badge clickable" data-whale-sym="${attrEsc(r.symbol)}" title="Click for who / headline / why S+ 6.5× boost">${whale.replace(/<[^>]+>/g,'')}</span>` : "";
+        const discBadge = r.discovered ? `<span class="ext-badge" style="background:rgba(168,85,247,0.25);color:#c084fc;border-color:#c084fc" title="From multi-website + large pool discovery scan (not regular hot)">DISC</span>` : "";
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${whaleClickable}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
+          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${whaleClickable}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
           <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span></td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
@@ -1438,6 +1479,16 @@
       <div class="spark-large" title="Click sparkline to re-analyze this symbol with latest data">${sparklineSvg(row.sparkline, 300, 72)}</div>
       <div class="meta-line clickable" data-act="factors" title="Core price/volume snapshot used by the algorithm">$${m.price} · Day ${m.day_chg_pct}% · 5d ${m.ret5d_pct}% · RVOL ${m.rvol}x · RSI ${m.rsi ?? "—"}</div>
       <div class="meta-line">P/E ${m.pe ?? "—"} · P/B ${m.pb ?? "—"} · FCF ${m.fcf ? "✓" : "—"} · 52w pos ${m.pct_52w_range ?? "—"}%</div>
+      <!-- Simple DMA/EMA support/resistance levels (technical signals that work a lot - shown plainly) -->
+      ${(() => {
+        const t = m.key_ma_support_res || (m.tech_levels ? {levels: m.tech_levels, signal: m.tech_signal} : null);
+        if (!t || !t.levels) return "";
+        const l = t.levels || {};
+        let txt = Object.entries(l).filter(([k]) => !k.includes("dist") && !k.includes("pct")).map(([k,v]) => `${k} ~${v}`).join(" · ");
+        const sig = t.signal || m.tech_signal || "";
+        const sigHelp = sig.includes("support") || sig.includes("bull") ? " — bullish support (simple buy zone)" : sig.includes("near") ? " — watch level for bounce/rejection" : sig.includes("bear") ? " — below key MAs (caution)" : "";
+        return txt ? `<div class="meta-line" style="background:rgba(56,189,248,0.06);padding:2px 6px;border-radius:3px;font-size:0.78rem"><strong>Key DMA/EMA Levels:</strong> ${txt}${sigHelp} <span class="muted">(proven simple signals)</span></div>` : "";
+      })()}
       ${alerts ? `<ul class="alerts">${alerts}</ul>` : ""}
       <p class="muted section-label">Top passed checks (click factors button for all + weights)</p>
       <div class="factor-chips">${factorChips || '<span class="muted">None yet</span>'}${more}</div>

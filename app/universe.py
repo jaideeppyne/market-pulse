@@ -58,6 +58,8 @@ NIFTY_BROADER = [
     "POWERGRID.NS", "NTPC.NS", "TATAPOWER.NS", "ADANIGREEN.NS", "JSWENERGY.NS",
     "ONGC.NS", "BPCL.NS", "IOC.NS", "GAIL.NS", "IGL.NS", "MGL.NS",
     "TRENT.NS", "AVALON.NS", "ABFRL.NS", "VMART.NS", "CROMPTON.NS",
+    # Aggressive expansion - many more liquid India names (banks, IT, auto, pharma, infra, metals, consumption, defense, etc.)
+    "LUPIN.NS","AUROPHARMA.NS","BIOCON.NS","GLENMARK.NS","IPCALAB.NS","ALKEM.NS","PERSISTENT.NS","LTIM.NS","MPHASIS.NS","COFORGE.NS","LTTS.NS","TATAELXSI.NS","KPITTECH.NS","CYIENT.NS","AFFLE.NS","HAPPSTMNDS.NS","TATACONSUM.NS","UBL.NS","RADICO.NS","UNITDSPR.NS","COLPAL.NS","PGHH.NS","BERGEPAINT.NS","ASHOKLEY.NS","BALKRISIND.NS","MRF.NS","APOLLOTYRE.NS","JUBLFOOD.NS","DEVYANI.NS","WESTLIFE.NS","SAPPHIRE.NS","LICI.NS","IRFC.NS","RVNL.NS","IRCON.NS","NBCC.NS","HUDCO.NS","PFC.NS","RECLTD.NS","NHPC.NS","SJVN.NS","NH.NS","TATASTEEL.NS","HINDALCO.NS","JSWSTEEL.NS","COALINDIA.NS","NMDC.NS","HINDCOPPER.NS","NATIONALUM.NS","MOIL.NS","LUPIN.NS","AUROPHARMA.NS","BIOCON.NS","GLENMARK.NS","IPCALAB.NS","ALKEM.NS","PERSISTENT.NS","LTIM.NS","MPHASIS.NS","COFORGE.NS","LTTS.NS","TATAELXSI.NS","KPITTECH.NS","CYIENT.NS","AFFLE.NS","HAPPSTMNDS.NS","TATACONSUM.NS","UBL.NS","RADICO.NS","UNITDSPR.NS","COLPAL.NS","PGHH.NS","BERGEPAINT.NS","ASHOKLEY.NS","BALKRISIND.NS","MRF.NS","APOLLOTYRE.NS","JUBLFOOD.NS","DEVYANI.NS","WESTLIFE.NS","SAPPHIRE.NS","LICI.NS","IRFC.NS","RVNL.NS","IRCON.NS","NBCC.NS","HUDCO.NS","PFC.NS","RECLTD.NS","NHPC.NS","SJVN.NS","NH.NS","TATASTEEL.NS","HINDALCO.NS","JSWSTEEL.NS","COALINDIA.NS","NMDC.NS","HINDCOPPER.NS","NATIONALUM.NS","MOIL.NS","DIXON.NS","KAYNES.NS","SYRMA.NS","AMBER.NS","POLYCAB.NS","KEI.NS","CGPOWER.NS","ABB.NS","SIEMENS.NS","HAL.NS","MAZDOCK.NS","GRSE.NS","COCHINSHIP.NS","BHEL.NS","DMART.NS","PIDILITIND.NS","HAVELLS.NS","VOLTAS.NS","GODREJCP.NS","INDIGO.NS","IRCTC.NS","ZOMATO.NS","PAYTM.NS","NAUKRI.NS","MOTHERSON.NS","TVSMOTOR.NS","BANKBARODA.NS","PNB.NS","CANBK.NS","IDFCFIRSTB.NS","VEDL.NS","NMDC.NS","SAIL.NS","JINDALSTEL.NS","HINDZINC.NS","ADANIGREEN.NS","TATAPOWER.NS","SUZLON.NS","LUPIN.NS","AUROPHARMA.NS","BIOCON.NS","GLENMARK.NS","IPCALAB.NS","ALKEM.NS"
 ]
 
 NASDAQ_100_SAMPLE = [
@@ -81,27 +83,23 @@ NASDAQ_100_SAMPLE = [
 # The live scanner focuses on "hot" movers from this pool. The Analyze box + /api/analyze runs the
 # *identical full 140-factor deep engine* on ANY ticker you type (even outside this list).
 US_BROADER = [
-    # Tech mega + semi + software/cloud/AI
-    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","AVGO","AMD","INTC","QCOM","TXN","AMAT","LRCX","KLAC","SNPS","CDNS","ARM","ASML","TSM","GFS","ON","MRVL","MPWR","TER","ENTG","AMKR","CRUS",
-    "NOW","SNOW","DDOG","CRWD","PANW","ZS","NET","ANET","FTNT","CYBR","S","TENB","RBRK","CSCO","ORCL","IBM","ADBE","CRM","INTU","WDAY","TEAM","MDB","PLTR","COIN","HOOD","MSTR","RIOT","MARA",
-    "V","MA","AXP","PYPL","SQ","COF","DFS","SYF",
-    # Healthcare + biotech + tools
-    "LLY","UNH","JNJ","PFE","ABBV","MRK","TMO","DHR","ISRG","REGN","VRTX","GILD","BIIH","AMGN","ILMN","DXCM","IDXX","RMD","HOLX","STE","COO","ALGN","BAX","BDX","EW","ZBH","BSX","SYK","MDT","ABT","BMY",
-    # Consumer + retail + auto
-    "COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD","YUM","CMG","DPZ","TJX","ROST","LULU","DECK","ONON","ETSY","EBAY","AMZN",
-    "TSLA","F","GM","RIVN","LCID","PCAR","ODFL","JBHT","XPO",
-    # Energy + industrials + defense + materials
-    "XOM","CVX","COP","EOG","MPC","PSX","VLO","SLB","BKR","HAL","OXY","FANG","DVN","APA",
-    "GE","RTX","LMT","NOC","GD","HII","LDOS","LHX","BA","CAT","DE","ETN","EMR","ROK","PH","IR","HON","MMM","DOW","DD","LYB","NEM","FCX","ALB","MP","LTHM",
-    "UPS","FDX","UNP","CSX","NSC","CP","CNI",
-    # Financials + fintech + insurance
-    "JPM","BAC","WFC","C","GS","MS","BLK","SCHW","ICE","CME","MCO","SPGI","MSCI","TRV","ALL","PGR","CB","AIG","MET","PRU","AFL",
-    # Comm + media + misc growth
-    "NFLX","DIS","CMCSA","WBD","PARA","T","VZ","TMUS","CHTR","EA","TTWO","ATVI","RBLX","U","PATH","DOCU","OKTA","TWLO","SMCI","DELL","HPQ","WDC","STX",
-    # REITs + utilities + staples for sector completeness
-    "AMT","PLD","EQIX","CCI","PSA","O","SPG","WELL","AVB","EQR","DLR","SBAC","WY","VTR",
-    "NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP",
-    "PG","KO","PEP","PM","MO","CL","KMB","GIS","K","HSY","SJM","CAG","CPB","HRL","MKC","CHD",
+    # Tech mega + semi + software/cloud/AI + many more high-volume names (aggressive multi-source expansion)
+    "AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","AVGO","AMD","INTC","QCOM","TXN","AMAT","LRCX","KLAC","SNPS","CDNS","ARM","ASML","TSM","GFS","ON","MRVL","MPWR","TER","ENTG","AMKR","CRUS","MU","WDC","STX","HPQ","DELL","SMCI","AVGO","AMD","NVDA","TSM","ASML","INTC","TXN","SNPS","CDNS","ANET","FTNT","CYBR","RBRK","CSCO","ORCL","IBM","ADBE","CRM","NOW","WDAY","TEAM","MDB","PLTR","COIN","HOOD","MSTR","RIOT","MARA","APP","ASTS","IONQ","RKLB","SPOT","UBER","LYFT","ABNB","DASH","PINS","SNAP","DKNG","ROKU","ZM","DOCN","HUBS","DDOG","CRWD","PANW","ZS","NET","ANET","FTNT","S","TENB","RBRK","CSCO","ORCL","IBM","ADBE","CRM","INTU","WDAY","TEAM","MDB","PLTR","COIN","HOOD","MSTR",
+    "V","MA","AXP","PYPL","SQ","COF","DFS","SYF","ALLY","SOFI","UPST","AFRM","LC","BRK-B",
+    # Healthcare + biotech + medtech + pharma + many more
+    "LLY","UNH","JNJ","PFE","ABBV","MRK","TMO","DHR","ISRG","REGN","VRTX","GILD","AMGN","ILMN","DXCM","IDXX","RMD","HOLX","STE","COO","ALGN","BAX","BDX","EW","ZBH","BSX","SYK","MDT","ABT","BMY","BIIB","INCY","EXAS","CRSP","BEAM","NTLA","EDIT","PACB","TWST","GH","NTRA","TXG","CDNA","REGN","VRTX","GILD","AMGN","ILMN","DXCM","IDXX","RMD","HOLX","STE","COO","ALGN","BAX","BDX","EW","ZBH","BSX","SYK","MDT","ABT","BMY","BIIB","INCY","EXAS","CRSP","BEAM","NTLA","EDIT","PACB","TWST","GH","NTRA","TXG","CDNA","PACB","TWST","GH","NTRA","TXG","CDNA","EXAS","CRSP","BEAM","NTLA","EDIT","INCY","BIIB","AMGN","GILD","REGN","VRTX","ISRG","DHR","TMO","MRK","ABBV","PFE","JNJ","UNH","LLY",
+    # Consumer + retail + auto + restaurants + apparel + many more
+    "COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD","YUM","CMG","DPZ","TJX","ROST","LULU","DECK","ONON","ETSY","EBAY","TSLA","F","GM","RIVN","LCID","PCAR","ODFL","JBHT","XPO","KR","WBA","CVS","DG","DLTR","BBY","ULTA","DKS","WSM","RH","TPR","PVH","RL","GPS","AEO","URBN","COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD","YUM","CMG","DPZ","TJX","ROST","LULU","DECK","ONON","ETSY","EBAY","TSLA","F","GM","RIVN","LCID","PCAR","ODFL","JBHT","XPO","KR","WBA","CVS","DG","DLTR","BBY","ULTA","DKS","WSM","RH","TPR","PVH","RL","GPS","AEO","URBN","EL","CLX","CHD","VFC","PVH","RL","GPS","AEO","URBN","BBY","ULTA","DKS","WSM","RH","TPR",
+    # Energy + industrials + defense + materials + transport + many more
+    "XOM","CVX","COP","EOG","MPC","PSX","VLO","SLB","BKR","HAL","OXY","FANG","DVN","APA","EPD","ET","WMB","KMI","OKE","PAA","MPLX","HES","CTRA","AR","RRC","SM","CVI","DK","PBF","NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP","ES","FE","PPL","CMS","CNP","ATO","NI","EVRG","GE","RTX","LMT","NOC","GD","HII","LDOS","LHX","BA","CAT","DE","ETN","EMR","ROK","PH","IR","HON","MMM","DOW","DD","LYB","NEM","FCX","ALB","MP","LTHM","UPS","FDX","UNP","CSX","NSC","CP","CNI","WM","RSG","ROP","ITW","IR","DOV","XYL","IEX","AOS","PNR","WAB","TT","CARR","OTIS","JCI","GE","RTX","LMT","NOC","GD","HII","LDOS","LHX","BA","CAT","DE","ETN","EMR","ROK","PH","IR","HON","MMM","DOW","DD","LYB","NEM","FCX","ALB","MP","LTHM","UPS","FDX","UNP","CSX","NSC","CP","CNI","WM","RSG","ROP","ITW","IR","DOV","XYL","IEX","AOS","PNR","WAB","TT","CARR","OTIS","JCI",
+    # Financials + banks + insurance + asset managers + exchanges + fintech + many more
+    "JPM","BAC","WFC","C","GS","MS","BLK","SCHW","ICE","CME","MCO","SPGI","MSCI","TRV","ALL","PGR","CB","AIG","MET","PRU","AFL","USB","PNC","TFC","COF","BK","STT","NTRS","RF","KEY","HBAN","FITB","CFG","MTB","ZION","EWBC","SIVB","SBNY","ALLY","DFS","AXP","V","MA","PYPL","SQ","COIN","HOOD","MSTR","BRK-B","JPM","BAC","WFC","C","GS","MS","BLK","SCHW","ICE","CME","MCO","SPGI","MSCI","TRV","ALL","PGR","CB","AIG","MET","PRU","AFL","USB","PNC","TFC","COF","BK","STT","NTRS","RF","KEY","HBAN","FITB","CFG","MTB","ZION","EWBC","SIVB","SBNY","ALLY","DFS","AXP","V","MA","PYPL","SQ","COIN","HOOD","MSTR","BRK-B",
+    # Media + comm + entertainment + misc + many more growth names
+    "NFLX","DIS","CMCSA","WBD","PARA","T","VZ","TMUS","CHTR","EA","TTWO","RBLX","U","PATH","DOCU","OKTA","TWLO","DELL","HPQ","WDC","STX","TER","ENTG","AMKR","CRUS","MPWR","ON","MRVL","GFS","ARM","KLAC","LRCX","AMAT","QCOM","AVGO","AMD","NVDA","TSM","ASML","INTC","TXN","SNPS","CDNS","ANET","FTNT","CYBR","RBRK","CSCO","ORCL","IBM","ADBE","CRM","NOW","WDAY","TEAM","MDB","PLTR","NFLX","DIS","CMCSA","WBD","PARA","T","VZ","TMUS","CHTR","EA","TTWO","RBLX","U","PATH","DOCU","OKTA","TWLO","DELL","HPQ","WDC","STX","TER","ENTG","AMKR","CRUS","MPWR","ON","MRVL","GFS","ARM","KLAC","LRCX","AMAT","QCOM","AVGO","AMD","NVDA","TSM","ASML","INTC","TXN","SNPS","CDNS","ANET","FTNT","CYBR","RBRK","CSCO","ORCL","IBM","ADBE","CRM","NOW","WDAY","TEAM","MDB","PLTR",
+    # REITs + utilities + staples + other large for full sector coverage + aggressive additions
+    "AMT","PLD","EQIX","CCI","PSA","O","SPG","WELL","AVB","EQR","DLR","SBAC","WY","VTR","INVH","MAA","ESS","UDR","CPT","ELS","EXR","CUBE","NSA","PEAK","OHI","HTA","DOC","NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP","ES","FE","PPL","CMS","CNP","ATO","NI","EVRG","PG","KO","PEP","PM","MO","CL","KMB","GIS","K","HSY","SJM","CAG","CPB","HRL","MKC","CHD","KDP","MNST","CELH","COTY","EL","CLX","VFC","PVH","RL","GPS","AEO","URBN","BBY","ULTA","DKS","WSM","RH","TPR","AMT","PLD","EQIX","CCI","PSA","O","SPG","WELL","AVB","EQR","DLR","SBAC","WY","VTR","INVH","MAA","ESS","UDR","CPT","ELS","EXR","CUBE","NSA","PEAK","OHI","HTA","DOC","NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP","ES","FE","PPL","CMS","CNP","ATO","NI","EVRG","PG","KO","PEP","PM","MO","CL","KMB","GIS","K","HSY","SJM","CAG","CPB","HRL","MKC","CHD","KDP","MNST","CELH","COTY","EL","CLX","VFC","PVH","RL","GPS","AEO","URBN","BBY","ULTA","DKS","WSM","RH","TPR",
+    # Additional high-signal / frequently mentioned / liquid names (multi-website style aggressive expansion)
+    "AMD","NVDA","TSLA","META","AMZN","GOOGL","AAPL","MSFT","NFLX","DIS","COST","HD","LOW","NKE","SBUX","MCD","PYPL","SQ","COIN","PLTR","SNOW","DDOG","CRWD","PANW","NET","RIVN","LCID","F","GM","XOM","CVX","JPM","BAC","GS","BLK","LLY","UNH","PFE","MRK","ABBV","ISRG","REGN","VRTX","GILD","AMGN","DXCM","ILMN","IDXX","RMD","HOLX","STE","ALGN","BAX","BDX","EW","ZBH","BSX","SYK","MDT","ABT","BMY","BIIB","INCY","EXAS","CRSP","BEAM","NTLA","EDIT","PACB","TWST","GH","NTRA","TXG","CDNA","COST","WMT","TGT","HD","LOW","NKE","SBUX","MCD","YUM","CMG","DPZ","TJX","ROST","LULU","DECK","ONON","ETSY","EBAY","TSLA","F","GM","RIVN","LCID","PCAR","ODFL","JBHT","XPO","KR","WBA","CVS","DG","DLTR","BBY","ULTA","DKS","WSM","RH","TPR","PVH","RL","GPS","AEO","URBN","XOM","CVX","COP","EOG","MPC","PSX","VLO","SLB","BKR","HAL","OXY","FANG","DVN","APA","EPD","ET","WMB","KMI","OKE","PAA","MPLX","HES","CTRA","AR","RRC","SM","CVI","DK","PBF","NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP","ES","FE","PPL","CMS","CNP","ATO","NI","EVRG","GE","RTX","LMT","NOC","GD","HII","LDOS","LHX","BA","CAT","DE","ETN","EMR","ROK","PH","IR","HON","MMM","DOW","DD","LYB","NEM","FCX","ALB","MP","LTHM","UPS","FDX","UNP","CSX","NSC","CP","CNI","WM","RSG","ROP","ITW","IR","DOV","XYL","IEX","AOS","PNR","WAB","TT","CARR","OTIS","JCI","JPM","BAC","WFC","C","GS","MS","BLK","SCHW","ICE","CME","MCO","SPGI","MSCI","TRV","ALL","PGR","CB","AIG","MET","PRU","AFL","USB","PNC","TFC","COF","BK","STT","NTRS","RF","KEY","HBAN","FITB","CFG","MTB","ZION","EWBC","SIVB","SBNY","ALLY","DFS","AXP","V","MA","PYPL","SQ","COIN","HOOD","MSTR","BRK-B","NFLX","DIS","CMCSA","WBD","PARA","T","VZ","TMUS","CHTR","EA","TTWO","RBLX","U","PATH","DOCU","OKTA","TWLO","DELL","HPQ","WDC","STX","TER","ENTG","AMKR","CRUS","MPWR","ON","MRVL","GFS","ARM","KLAC","LRCX","AMAT","QCOM","AVGO","AMD","NVDA","TSM","ASML","INTC","TXN","SNPS","CDNS","ANET","FTNT","CYBR","RBRK","CSCO","ORCL","IBM","ADBE","CRM","NOW","WDAY","TEAM","MDB","PLTR","AMT","PLD","EQIX","CCI","PSA","O","SPG","WELL","AVB","EQR","DLR","SBAC","WY","VTR","INVH","MAA","ESS","UDR","CPT","ELS","EXR","CUBE","NSA","PEAK","OHI","HTA","DOC","NEE","DUK","SO","D","EXC","XEL","SRE","PEG","ED","WEC","AEP","ES","FE","PPL","CMS","CNP","ATO","NI","EVRG","PG","KO","PEP","PM","MO","CL","KMB","GIS","K","HSY","SJM","CAG","CPB","HRL","MKC","CHD","KDP","MNST","CELH","COTY","EL","CLX","VFC","PVH","RL","GPS","AEO","URBN","BBY","ULTA","DKS","WSM","RH","TPR"
 ]
 
 SP500_SAMPLE = [
@@ -156,6 +154,70 @@ def fetch_sp500_from_wikipedia() -> list[str]:
     return SP500_SAMPLE
 
 
+def fetch_nasdaq100_from_wikipedia() -> list[str]:
+    """Scrape NASDAQ-100 list from Wikipedia (second source)."""
+    try:
+        tables = pd.read_html(
+            "https://en.wikipedia.org/wiki/NASDAQ-100",
+            storage_options={"User-Agent": "MarketPulse/1.0 (+https://local/market-pulse)"},
+            flavor="lxml",
+        )
+        for t in tables:
+            if "Ticker" in t.columns or "Symbol" in t.columns:
+                col = "Ticker" if "Ticker" in t.columns else "Symbol"
+                syms = t[col].astype(str).str.replace(".", "-", regex=False).tolist()
+                if len(syms) > 30:
+                    return syms
+    except Exception:
+        pass
+    return NASDAQ_100_SAMPLE
+
+
+def fetch_more_india_from_wikipedia() -> list[str]:
+    """Try additional India lists from Wikipedia (multiple sites)."""
+    syms: list[str] = []
+    urls = [
+        "https://en.wikipedia.org/wiki/List_of_companies_listed_on_the_National_Stock_Exchange_of_India",
+        "https://en.wikipedia.org/wiki/NIFTY_500",
+    ]
+    for url in urls:
+        try:
+            tables = pd.read_html(
+                url,
+                storage_options={"User-Agent": "MarketPulse/1.0 (+https://local/market-pulse)"},
+                flavor="lxml",
+            )
+            for t in tables:
+                for col in t.columns:
+                    if "Symbol" in str(col) or "Ticker" in str(col) or "NSE" in str(col):
+                        s = t[col].astype(str).str.upper().str.replace(r"[^A-Z0-9]", "", regex=True).tolist()
+                        syms.extend([x + ".NS" for x in s if len(x) >= 2])
+                        break
+        except Exception:
+            continue
+    return list(dict.fromkeys(syms))  # dedup preserve order
+
+
+def get_full_discovery_pool(cfg: dict) -> list[str]:
+    """Superset for 'Scan More / Full Discovery' — current universe + massive additional common tickers.
+    This lets users trigger deep scans across many more listed names without making the *live* hot scanner
+    crawl thousands every cycle (rate limits + free tier constraints).
+    """
+    base = build_universe(cfg)
+    extra_us = [
+        "AAPL","MSFT","AMZN","GOOGL","META","TSLA","NVDA","AMD","INTC","QCOM","AVGO","ADBE","CRM","NOW","SNOW","PLTR","COIN","HOOD",
+        "JPM","BAC","GS","BLK","V","MA","PYPL","SQ","XOM","CVX","UNH","JNJ","PFE","LLY","MRK","ABBV","TMO","DHR","ISRG","COST","WMT","HD","NKE","MCD","SBUX","NFLX","DIS","CMCSA","BA","CAT","GE","RTX","LMT","NOC","UPS","FDX","NEE","DUK","PG","KO","PEP","PM","MO","AMT","PLD","EQIX"
+    ]
+    extra_india = [
+        "RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","SBIN.NS","BHARTIARTL.NS","LT.NS","AXISBANK.NS","KOTAKBANK.NS",
+        "HINDUNILVR.NS","ITC.NS","SUNPHARMA.NS","TATAMOTORS.NS","MARUTI.NS","M&M.NS","ADANIENT.NS","ADANIPORTS.NS","TATASTEEL.NS","HINDALCO.NS",
+        "POWERGRID.NS","NTPC.NS","ONGC.NS","BPCL.NS","GAIL.NS","TATAPOWER.NS","ADANIGREEN.NS","ZOMATO.NS","PAYTM.NS","NAUKRI.NS","IRCTC.NS"
+    ]
+    pool = sorted(set(base["us"] + [s for s in extra_us if not s.endswith(".NS")] +
+                      base["india"] + extra_india))
+    return pool
+
+
 def build_universe(cfg: dict) -> dict[str, list[str]]:
     """Return {'us': [...], 'india': [...]} symbol lists.
 
@@ -185,7 +247,8 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
             us.update(fetch_sp500_from_wikipedia())
         if ucfg.get("use_nasdaq100", True):
             us.update(NASDAQ_100_SAMPLE)
-        # Always include broader liquid names for much deeper market coverage
+            us.update(fetch_nasdaq100_from_wikipedia())  # second website scrape
+        # Always include broader liquid names for much deeper market coverage (multi-source)
         us.update(US_BROADER)
         us.update(_read_extra(ROOT / ucfg.get("extra_symbols_file", "data/us_extra.txt")))
 
@@ -196,6 +259,7 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
         if icfg.get("use_nifty500_sample", True):
             india.update(NIFTY_EXTENDED)
             india.update(NIFTY_BROADER)
+            india.update(fetch_more_india_from_wikipedia())  # additional wiki scrape(s)
         india.update(_read_extra(ROOT / icfg.get("extra_symbols_file", "data/india_extra.txt")))
 
     # Normalize India symbols

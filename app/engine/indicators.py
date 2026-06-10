@@ -99,6 +99,64 @@ def pct_52w_range(price: float, high: float | None, low: float | None) -> float 
     return float((price - low) / (high - low))
 
 
+# === Simple, proven technical signals that work (DMA/EMA + support/resistance) ===
+# User priority: technical or fundamental doesn't matter if it helps users make better decisions simply.
+
+def ema(close: pd.Series, period: int = 20) -> float | None:
+    if len(close) < period + 1:
+        return None
+    val = close.ewm(span=period, adjust=False).mean().iloc[-1]
+    return float(val) if pd.notna(val) else None
+
+
+def dma(close: pd.Series, period: int = 50) -> float | None:
+    """50/200 DMA (simple moving average) - classic support/resistance and trend signal."""
+    if len(close) < period + 1:
+        return None
+    val = close.rolling(period).mean().iloc[-1]
+    return float(val) if pd.notna(val) else None
+
+
+def ma_support_resistance(close: pd.Series, price: float | None = None) -> dict:
+    """Simple support/resistance from key MAs (50DMA, 200DMA, 20EMA).
+    Returns distances and a basic signal string. 'Support' when price near MA from above + recent low.
+    These are easy-to-understand buy/sell signals that have worked for decades.
+    """
+    if len(close) < 50:
+        return {"signal": None, "levels": {}}
+    p = price or float(close.iloc[-1])
+    ma50 = dma(close, 50)
+    ma200 = dma(close, 200)
+    ema20 = ema(close, 20)
+    levels = {}
+    if ma50:
+        levels["50DMA"] = round(ma50, 2)
+        dist50 = (p - ma50) / ma50 if ma50 else 0
+        levels["dist_50dma_pct"] = round(dist50 * 100, 1)
+    if ma200:
+        levels["200DMA"] = round(ma200, 2)
+        dist200 = (p - ma200) / ma200 if ma200 else 0
+        levels["dist_200dma_pct"] = round(dist200 * 100, 1)
+    if ema20:
+        levels["20EMA"] = round(ema20, 2)
+    # Simple signals
+    signal = "neutral"
+    if ma50 and ma200:
+        if p > ma50 and p > ma200 and (ma50 > ma200):
+            signal = "bullish_trend_support"
+        elif p < ma50 and p < ma200:
+            signal = "bearish_below"
+        elif abs((p - ma50)/ma50) < 0.025 or abs((p - ma200)/ma200) < 0.03:
+            signal = "near_key_ma"  # potential support or resistance
+    if ema20 and ma50 and p > ema20 > ma50:
+        signal = "bullish_ema_alignment"
+    return {
+        "signal": signal,
+        "levels": levels,
+        "price": round(p, 2),
+    }
+
+
 def rsi_series(close: pd.Series, period: int = 14) -> pd.Series:
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(period).mean()

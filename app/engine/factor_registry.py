@@ -14,9 +14,12 @@ from app.engine.factor_weights import factor_weight, tier_label, weighted_points
 from app.engine.scoring import _compute_scores
 from app.engine.indicators import (
     cup_handle_score,
+    dma,
+    ema,
     higher_lows,
     ma_alignment,
     macd_signal,
+    ma_support_resistance,
     near_ma_pullback,
     pct_52w_range,
     range_compression,
@@ -243,6 +246,25 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
             s200 = close.rolling(200).mean()
             if s50.iloc[-1] > s200.iloc[-1] and s50.iloc[-2] <= s200.iloc[-2]:
                 add("golden_cross_zone", "technical", "Golden cross (50/200)", 2.5, "GOLDEN CROSS")
+
+    # New: explicit DMA/EMA + support/resistance (simple signals that work well for users)
+    # DMA = classic 50/200 day moving average. EMA for faster response.
+    # Support/resistance near these levels are easy-to-understand buy (support) / sell (resistance) signals.
+    ma_info = ma_support_resistance(close)
+    if ma_info.get("signal") in ("bullish_trend_support", "bullish_ema_alignment"):
+        add("dma_ema_bull_support", "technical", "Price above key DMAs / EMA support", 2.0, "TECH SUPPORT")
+    if ma_info.get("signal") == "near_key_ma" and ctx.day_chg_pct > -1:
+        # Price hugging a major MA - often acts as support in uptrends
+        add("near_dma_support", "entry", "Taking support near 50/200 DMA or 20 EMA", 2.0)
+    if ma_info.get("levels"):
+        lv = ma_info["levels"]
+        if "50DMA" in lv and abs((ctx.price - lv.get("50DMA", ctx.price)) / max(1, lv.get("50DMA",1))) < 0.02:
+            add("near_50dma", "technical", f"Near 50 DMA ({lv['50DMA']})", 1.0)
+        if "200DMA" in lv and abs((ctx.price - lv.get("200DMA", ctx.price)) / max(1, lv.get("200DMA",1))) < 0.025:
+            add("near_200dma", "technical", f"Near 200 DMA ({lv['200DMA']}) - major support/res", 1.5)
+    ema20v = ema(close, 20)
+    if ema20v and ctx.price > ema20v * 0.98 and ctx.price < ema20v * 1.03:
+        add("near_ema20", "technical", "Price near 20 EMA", 1.0)
 
     # --- VOLUME & MOMENTUM ---
     if ctx.rvol >= 2.5:

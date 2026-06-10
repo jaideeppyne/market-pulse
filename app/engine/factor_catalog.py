@@ -67,6 +67,12 @@ FACTOR_CATALOG: list[FactorDef] = [
     FactorDef("ma_bull_stack", "technical", "MA bull stack", "Price above rising 20/50/200 MAs", "both"),
     FactorDef("above_50dma", "technical", "Above 50-day MA", "Price above 50-day average", "both"),
     FactorDef("golden_cross_zone", "technical", "Golden cross zone", "50 MA crossing above 200 MA", "both"),
+    # New simple DMA/EMA + support/resistance (proven user-friendly signals)
+    FactorDef("near_50dma", "technical", "Near 50 DMA", "Price at/near 50-day moving average (classic support)", "both"),
+    FactorDef("near_200dma", "technical", "Near 200 DMA", "Price at/near major 200-day MA (strong support/resistance)", "both"),
+    FactorDef("near_ema20", "technical", "Near 20 EMA", "Price near fast 20-period EMA", "both"),
+    FactorDef("dma_ema_bull_support", "technical", "DMA/EMA bullish support", "Price holding support above key DMAs or EMA alignment", "both"),
+    FactorDef("near_dma_support", "entry", "Support at DMA/EMA", "Price taking support near 50/200 DMA or 20 EMA - simple buy zone", "both"),
     # Volume & momentum (10)
     FactorDef("rvol_surge", "volume", "Volume surge", "Relative volume ≥ 2.5×", "both"),
     FactorDef("rvol_above_avg", "volume", "Above-avg volume", "Relative volume ≥ 1.6×", "both"),
@@ -165,7 +171,7 @@ CATEGORY_ORDER = [
 
 ENTRY_FACTOR_IDS = frozenset(
     f.id for f in FACTOR_CATALOG if f.category == "entry"
-)
+) | {"near_dma_support", "dma_ema_bull_support"}  # simple tech support signals get entry boost too
 RISK_EXTENSION_IDS = frozenset(
     {"extended_run", "chase_risk", "parabolic_move", "already_at_high", "rsi_overbought"}
 )

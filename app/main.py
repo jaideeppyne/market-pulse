@@ -324,6 +324,86 @@ async def api_edge(days: int = 2, min_score: float = 55.0):
     return {"summary": summary, "signals": snaps[:60], "by_window": by_time}
 
 
+@app.get("/api/discover")
+async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180):
+    """'Scan More / Full Discovery' feature.
+    Scrapes/grows from multiple sources (multiple wiki lists + large static pools in universe.py + data/*.txt)
+    then runs the *exact same deep 140-factor engine* on a large additional pool of listed names
+    (beyond the live hot scanner's regular universe to avoid overloading the always-on loops).
+    Returns promising new high-conviction setups that can be merged into the UI.
+    Triggered by user button so we can be more aggressive on batching without killing free tier.
+    """
+    from app.universe import get_full_discovery_pool
+    from app.crawler.price_crawler import _fetch_batch
+    from app.engine.signals import analyze_symbol
+    from app.config import load_config
+
+    cfg = load_config()
+    full_pool = get_full_discovery_pool(cfg)
+
+    async with state.lock:
+        current_syms = set(s["symbol"] for s in (getattr(state, "hot", []) or []))
+        news_titles_map = dict(state.news_titles_by_symbol or {})
+        earn_map = dict(state.earnings_by_symbol or {})
+
+    # Pick additional symbols not in current hot (to surface "new" discoveries)
+    candidates = [s for s in full_pool if s not in current_syms]
+    candidates = candidates[:extra]  # cap per call for free tier / yf rate limits
+
+    discovered = []
+    batch_size = 20
+    delay = 0.25
+
+    for i in range(0, len(candidates), batch_size):
+        if not candidates:
+            break
+        chunk = candidates[i : i + batch_size]
+        try:
+            raw = await asyncio.to_thread(_fetch_batch, chunk)
+            for sym, (hist, info, calendar) in raw.items():
+                if hist is None or hist.empty or len(hist) < 5:
+                    continue
+                market = "india" if sym.endswith((".NS", ".BO")) else "us"
+                nt = news_titles_map.get(sym, [])[:12]
+                earn = earn_map.get(sym)
+                try:
+                    sig = analyze_symbol(
+                        sym, market, hist, info or {}, len(nt), None,
+                        earnings=earn, news_titles=nt, calendar=calendar
+                    )
+                    if (sig.score or 0) >= min_score:
+                        payload = {
+                            "symbol": sym,
+                            "market": market,
+                            "score": sig.score,
+                            "buy_score": sig.metrics.get("buy_score", sig.score),
+                            "signals": sig.signals,
+                            "alerts": sig.alerts,
+                            "metrics": sig.metrics,
+                            "factors_hit": sig.factors_hit,
+                            "factors_total": sig.factors_total,
+                            "factor_breakdown": sig.factor_breakdown,
+                            "sparkline": [round(float(x), 4) for x in hist["Close"].tail(20).tolist()] if len(hist) > 0 else [],
+                            "discovered": True,
+                        }
+                        discovered.append(payload)
+                except Exception:
+                    continue
+            await asyncio.sleep(delay)
+        except Exception:
+            await asyncio.sleep(delay)
+            continue
+
+    discovered.sort(key=lambda x: x.get("score", 0), reverse=True)
+    return {
+        "discovered": discovered[:limit],
+        "scanned_extra": len(candidates),
+        "total_pool": len(full_pool),
+        "min_score": min_score,
+        "note": "These are on-demand deep engine results from a much larger multi-source list (wiki scrapes + big static + extras). Not part of the regular live hot ranking until they stay hot."
+    }
+
+
 @app.get("/api/snapshots/{symbol:path}")
 async def api_snapshots_for_symbol(symbol: str, limit: int = 20):
     """Score history snapshots for a symbol (used by My List watch for history curves)."""
