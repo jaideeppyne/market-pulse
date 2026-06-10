@@ -210,7 +210,7 @@ class ScannerLoop:
             try:
                 await asyncio.sleep(interval)
                 async with self.state.lock:
-                    syms = [x["symbol"] for x in self.hot[: batch * 2]]
+                    syms = [x["symbol"] for x in self.state.hot[: batch * 2]]
                 if not syms:
                     continue
                 patches: list[dict] = []
