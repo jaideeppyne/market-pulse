@@ -225,27 +225,32 @@ class AppState:
         self.broadcast_event.set()
 
     async def update_events(self, events: list[dict[str, Any]]) -> None:
-        if not events:
-            return
         async with self.lock:
-            merged = events + self.events
-            seen = set()
-            deduped = []
-            for e in merged:
-                key = e.get("event_key") or f"{e.get('symbol')}:{e.get('event_type')}:{e.get('title')}"
-                if key in seen:
-                    continue
-                seen.add(key)
-                deduped.append(e)
-            self.events = deduped[:250]
-            by_symbol: dict[str, list[dict[str, Any]]] = {}
-            for e in self.events:
-                sym = e.get("symbol")
-                if sym:
-                    by_symbol.setdefault(sym, []).append(e)
-            self.events_by_symbol = {k: v[:20] for k, v in by_symbol.items()}
+            result_count = len(events or [])
+            if events:
+                merged = events + self.events
+                seen = set()
+                deduped = []
+                for e in merged:
+                    key = e.get("event_key") or f"{e.get('symbol')}:{e.get('event_type')}:{e.get('title')}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    deduped.append(e)
+                self.events = deduped[:250]
+                by_symbol: dict[str, list[dict[str, Any]]] = {}
+                for e in self.events:
+                    sym = e.get("symbol")
+                    if sym:
+                        by_symbol.setdefault(sym, []).append(e)
+                self.events_by_symbol = {k: v[:20] for k, v in by_symbol.items()}
+            now = datetime.now(timezone.utc).isoformat()
             self.stats["market_events_count"] = len(self.events)
-            self.stats["last_event_scan"] = datetime.now(timezone.utc).isoformat()
+            self.stats["last_event_scan"] = now
+            self.stats["last_event_scan_result_count"] = result_count
+            self.stats["last_event_scan_empty"] = result_count == 0
+            if result_count == 0:
+                self.stats["last_empty_event_scan"] = now
             self.live_tick += 1
             self.stats["live_tick"] = self.live_tick
         self.broadcast_event.set()
