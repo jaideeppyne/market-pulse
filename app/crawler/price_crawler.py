@@ -134,7 +134,13 @@ async def scan_symbols(
     return results
 
 
-async def full_exhaustive_scan(pool: list[str], news_counts: dict = None, news_titles: dict = None, earnings_map: dict = None) -> list[dict]:
+async def full_exhaustive_scan(
+    pool: list[str],
+    news_counts: dict = None,
+    news_titles: dict = None,
+    earnings_map: dict = None,
+    events_by_symbol: dict[str, list[dict]] | None = None,
+) -> list[dict]:
     """Full accuracy exhaustive scan over the COMPLETE universe (all reachable India + US listed stocks).
     Time does not matter. We are extremely slow and thorough for maximum coverage and accuracy:
     - 2y history for better technicals and patterns.
@@ -153,6 +159,7 @@ async def full_exhaustive_scan(pool: list[str], news_counts: dict = None, news_t
     news_counts = news_counts or {}
     news_titles = news_titles or {}
     earnings_map = earnings_map or {}
+    events_by_symbol = events_by_symbol or {}
     results = []
     features_for_ml = []  # for ML: collect numeric factor points
     # Extremely conservative for full accuracy on free tier (time no object)
@@ -185,7 +192,17 @@ async def full_exhaustive_scan(pool: list[str], news_counts: dict = None, news_t
                 nt = news_titles.get(sym, [])[:15]
                 earn = earnings_map.get(sym)
                 nc = news_counts.get(sym, 0)
-                sig = analyze_symbol(sym, market, hist, info, nc, None, earnings=earn, news_titles=nt)
+                sig = analyze_symbol(
+                    sym,
+                    market,
+                    hist,
+                    info,
+                    nc,
+                    None,
+                    earnings=earn,
+                    news_titles=nt,
+                    market_events=events_by_symbol.get(sym, []),
+                )
                 # Collect numeric features from factor points for ML
                 factor_points = [f.get('weighted_points', f.get('points', 0)) for f in sig.factor_breakdown if f.get('status') == 'pass']
                 if len(factor_points) < 5:

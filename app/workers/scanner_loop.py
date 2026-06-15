@@ -6,11 +6,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.crawler.earnings_crawler import crawl_earnings_calendar
+from app.crawler.event_crawler import (
+    crawl_sec_form4_events,
+    derive_news_events,
+    persist_events,
+)
 from app.crawler.insider_crawler import crawl_insider_filings
 from app.crawler.news_crawler import crawl_news_feeds
 from app.crawler.price_crawler import scan_symbols
 from app.crawler.quick_prices import quick_refresh_symbols
 from app.db import clear_stale_earnings, insert_investor_event, run_retention_cleanup
+from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -70,6 +76,19 @@ class ScannerLoop:
         while self._running:
             try:
                 pairs = self._all_symbols()
+                async with self.state.lock:
+                    events_by_symbol = {
+                        sym: list(events)
+                        for sym, events in self.state.events_by_symbol.items()
+                    }
+                seen_pairs = {sym for sym, _ in pairs}
+                for sym, events in events_by_symbol.items():
+                    if sym in seen_pairs:
+                        continue
+                    event_market = (events[0] or {}).get("market") if events else None
+                    market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "us")
+                    pairs.append((sym, market))
+                    seen_pairs.add(sym)
                 all_results: list[dict] = []
                 batch_total = max(1, (len(pairs) + batch_size - 1) // batch_size)
                 batch_index = 0
@@ -84,6 +103,10 @@ class ScannerLoop:
                     async with self.state.lock:
                         earn_map = dict(self.state.earnings_by_symbol)
                         news_titles = dict(self.state.news_titles_by_symbol)
+                        events_by_symbol = {
+                            sym: list(events)
+                            for sym, events in self.state.events_by_symbol.items()
+                        }
                     batch_results: list[dict] = []
                     for mkt, syms in by_market.items():
                         if syms:
@@ -94,6 +117,7 @@ class ScannerLoop:
                                 weights,
                                 earn_map,
                                 news_titles,
+                                events_by_symbol,
                             )
                             batch_results.extend(res)
                             all_results.extend(res)
@@ -129,6 +153,47 @@ class ScannerLoop:
                     self._news_counts[k] = max(0, self._news_counts[k] - 1)
             except Exception:
                 logger.exception("Price loop error")
+            await asyncio.sleep(interval)
+
+    async def event_loop(self) -> None:
+        """Ingest structured market events and maintain event-driven candidates."""
+        scfg = self.cfg.get("scanner", {})
+        interval = scfg.get("event_scan_interval_sec", 180)
+        sec_limit = scfg.get("event_sec_form4_limit", 40)
+
+        while self._running:
+            try:
+                async with self.state.lock:
+                    news_items = list(self.state.news[:250])
+
+                events = await crawl_sec_form4_events(limit=sec_limit)
+                events.extend(derive_news_events(news_items, self._universe_flat))
+                new_events = await persist_events(events)
+
+                if new_events:
+                    await self.state.update_events(new_events)
+
+                async with self.state.lock:
+                    events_by_symbol = {
+                        sym: list(items)
+                        for sym, items in self.state.events_by_symbol.items()
+                    }
+                    symbols_cache = dict(self.state.symbols)
+                candidates = build_event_candidates(
+                    events_by_symbol,
+                    symbols_cache,
+                    limit=scfg.get("event_candidate_limit", 120),
+                )
+                await self.state.update_candidates(candidates)
+
+                logger.info(
+                    "Event loop: %d crawled, %d new, %d candidates",
+                    len(events),
+                    len(new_events),
+                    len(candidates),
+                )
+            except Exception:
+                logger.exception("Event loop error")
             await asyncio.sleep(interval)
 
     async def cleanup_loop(self) -> None:
@@ -222,6 +287,7 @@ class ScannerLoop:
 
         await asyncio.gather(
             self.news_loop(),
+            self.event_loop(),
             self.price_loop(),
             self.quick_price_loop(),
             self.earnings_loop(),

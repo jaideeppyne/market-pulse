@@ -70,6 +70,21 @@
     price_tick: "Time of the latest quick price-only refresh for hot names.",
   };
 
+  const CONTROL_HELP = {
+    alertBell: "Recent high-score, S+ smart-money, and pre-earnings alerts.",
+    symbolSearch: "Filter the current hot list, or type any ticker and press Enter to run full analysis.",
+    analyzeBtn: "Run the full factor engine on the ticker in the search box.",
+    discoverBtn: "Scan broader US and India symbol pools for additional high-conviction names.",
+    fullScanBtn: "Start the slow exhaustive scan across the widest reachable market universe.",
+    loadFullScanBtn: "Load saved results from the most recent exhaustive scan.",
+    sortBy: "Change the hot-list ranking without changing the underlying scan data.",
+    exportHotBtn: "Download the currently visible hot-list data as CSV.",
+    exportWatchBtn: "Download My List as CSV.",
+    clearWatchBtn: "Remove every symbol from My List on this device.",
+    manageAlertRulesBtn: "Open alert rules manager (server-persisted conditions for score/investor/earnings). Matches push rich alerts immediately.",
+    refreshServerWatchBtn: "Force sync watchlist + recent alerts from server (for multi-device).",
+  };
+
   let helpPopover = null;
 
   function showHelpPopover(anchor, text) {
@@ -82,7 +97,12 @@
     document.body.appendChild(helpPopover);
     const pop = helpPopover.getBoundingClientRect();
     const left = Math.min(window.innerWidth - pop.width - 12, Math.max(12, rect.left));
-    const top = Math.min(window.innerHeight - pop.height - 12, rect.bottom + 8);
+    const below = rect.bottom + 8;
+    const above = rect.top - pop.height - 8;
+    const top =
+      below + pop.height + 12 <= window.innerHeight
+        ? below
+        : Math.max(12, above);
     helpPopover.style.left = `${left}px`;
     helpPopover.style.top = `${top}px`;
   }
@@ -102,14 +122,127 @@
       el.addEventListener("focus", () => showHelpPopover(el, el.dataset.help));
       el.addEventListener("mouseleave", hideHelpPopover);
       el.addEventListener("blur", hideHelpPopover);
+      el.addEventListener("pointerdown", () => {
+        showHelpPopover(el, el.dataset.help);
+        window.setTimeout(hideHelpPopover, 1800);
+      });
     });
   }
 
-  // Load persisted watchlist (local only)
+  function syncStickyOffsets() {
+    const topbar = document.querySelector(".topbar");
+    if (!topbar) return;
+    document.documentElement.style.setProperty(
+      "--topbar-height",
+      `${Math.ceil(topbar.getBoundingClientRect().height)}px`
+    );
+  }
+
+  function applyStaticHelp() {
+    Object.entries(CONTROL_HELP).forEach(([id, text]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.dataset.help = text;
+      el.title = text;
+    });
+    document.querySelectorAll(".chip[data-market]").forEach((btn) => {
+      const market = btn.dataset.market;
+      btn.dataset.help =
+        market === "all"
+          ? "Show US and India names together."
+          : `Show ${market.toUpperCase()} names only.`;
+    });
+    document.getElementById("earlyOnlyChip")?.setAttribute(
+      "data-help",
+      "Keep only non-extended setups with cleaner entry conditions."
+    );
+    document.getElementById("whaleOnlyChip")?.setAttribute(
+      "data-help",
+      "Toggle S+ smart-money, politician, FII, or named investor signals."
+    );
+    document.querySelectorAll("[data-sector-market]").forEach((btn) => {
+      const market = btn.dataset.sectorMarket;
+      btn.dataset.help =
+        market === "all"
+          ? "Show sector breadth across both markets."
+          : `Show sector breadth for ${market.toUpperCase()} names only.`;
+    });
+    bindHelp(document);
+  }
+
+  // Load persisted watchlist (local fallback + server sync for multi-device/restart)
+  let serverWatchesLoaded = false;
   try {
     const saved = localStorage.getItem("marketpulse_watchlist");
     if (saved) watchlist = JSON.parse(saved);
   } catch (e) {}
+
+  async function loadServerWatches() {
+    try {
+      const res = await fetch("/api/watchlist");
+      if (res.ok) {
+        const j = await res.json();
+        const srv = (j.watches || []).map(w => ({ symbol: w.symbol, addedAt: w.added_at, notes: w.notes, server: true }));
+        if (srv.length) {
+          // Merge: server authoritative, keep local-only extras as fallback
+          const srvSet = new Set(srv.map(s=>s.symbol));
+          watchlist = [...srv, ...watchlist.filter(w => !srvSet.has(w.symbol))];
+        }
+        serverWatchesLoaded = true;
+      }
+    } catch (e) {
+      // offline: use local
+    }
+    try { localStorage.setItem("marketpulse_watchlist", JSON.stringify(watchlist)); } catch(e){}
+  }
+
+  async function addToServerWatch(symbol, notes="") {
+    try {
+      const res = await fetch("/api/watchlist", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({symbol, notes})});
+      if (res.ok) {
+        await loadServerWatches();
+        return true;
+      }
+    } catch(e){}
+    return false;
+  }
+
+  async function removeFromServerWatch(symbol) {
+    try {
+      await fetch(`/api/watchlist/${encodeURIComponent(symbol)}`, {method:"DELETE"});
+      await loadServerWatches();
+      return true;
+    } catch(e){}
+    return false;
+  }
+
+  async function loadServerAlertRules() {
+    try {
+      const res = await fetch("/api/alert_rules");
+      if (res.ok) return (await res.json()).rules || [];
+    } catch(e){}
+    return [];
+  }
+
+  async function createServerAlertRule(rule_type, condition, enabled=true) {
+    try {
+      const res = await fetch("/api/alert_rules", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({rule_type, condition, enabled})});
+      if (res.ok) return await res.json();
+    } catch(e){}
+    return null;
+  }
+
+  async function deleteServerAlertRule(id) {
+    try { await fetch(`/api/alert_rules/${id}`, {method:"DELETE"}); } catch(e){}
+  }
+
+  async function fetchRecentServerAlerts() {
+    try {
+      const res = await fetch("/api/alerts/recent?limit=40");
+      if (res.ok) return (await res.json()).alerts || [];
+    } catch(e){}
+    return [];
+  }
 
   const CATEGORY_SORT = [
     "entry",
@@ -249,6 +382,7 @@
       if (tab === "radar") renderRadar(lastData);
     });
   });
+  applyStaticHelp();
 
   document.querySelectorAll("[data-sector-market]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -299,14 +433,60 @@
     if (confirm("Clear your entire My List?")) {
       watchlist = [];
       saveWatch();
+      // Best effort server clear would require per-item, for simplicity just local clear + reload from server later
       renderWatch(lastData);
     }
+  });
+  document.getElementById("manageAlertRulesBtn")?.addEventListener("click", () => {
+    const sec = document.getElementById("alertRulesSection");
+    if (sec) {
+      sec.style.display = (sec.style.display === "none" || !sec.style.display) ? "block" : "none";
+      if (sec.style.display === "block") refreshAlertRulesUI();
+    } else {
+      showAlertRulesModal();
+    }
+  });
+  document.getElementById("refreshServerWatchBtn")?.addEventListener("click", async () => {
+    await loadServerWatches();
+    const srvAl = await fetchRecentServerAlerts();
+    if (srvAl.length) {
+      // merge server alerts into local recent for display
+      srvAl.forEach(sa => {
+        const exists = recentAlerts.some(a => a.symbol===sa.symbol && a.msg===sa.message);
+        if (!exists) recentAlerts.unshift({type: sa.rule_type||"server", symbol:sa.symbol, msg: sa.message, ts: sa.triggered_at, score: sa.buy_score});
+      });
+      if (recentAlerts.length>30) recentAlerts.length=30;
+    }
+    renderAlertBell();
+    renderWatch(lastData);
   });
   alertBell?.addEventListener("click", () => {
     if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().then(p => { if (p === "granted") alertsEnabled = true; });
     }
     showAlertsPanel();
+  });
+
+  // Inline rules UI bindings (in watch panel)
+  const addRuleBtn = document.getElementById("addRuleBtn");
+  addRuleBtn?.addEventListener("click", async () => {
+    const rtype = document.getElementById("ruleTypeSel")?.value || "score";
+    const minScore = parseFloat(document.getElementById("ruleMinScore")?.value || "0") || null;
+    const minRvol = parseFloat(document.getElementById("ruleMinRvol")?.value || "0") || null;
+    const hasInv = !!document.getElementById("ruleHasInvestor")?.checked;
+    const cond = {};
+    if (minScore) cond.min_buy_score = minScore;
+    if (minRvol) cond.min_rvol = minRvol;
+    if (hasInv) cond.has_investor = true;
+    if (rtype === "earnings") cond.earnings_within_days = 3;
+    const created = await createServerAlertRule(rtype, cond);
+    if (created) {
+      await refreshAlertRulesUI();
+      pushAlert("rule", "SYSTEM", `Alert rule #${created.id} (${rtype}) added on server`, null);
+    }
+  });
+  document.getElementById("hideRulesBtn")?.addEventListener("click", () => {
+    const sec = document.getElementById("alertRulesSection"); if (sec) sec.style.display = "none";
   });
 
   function hasSmartMoneySignal(row) {
@@ -738,6 +918,7 @@
     else if (row.earnings_soon || breakdown.some(f => f.id && f.id.includes("earnings") && f.status === "pass")) archetype = "Pre-Earnings Catalyst";
     else if (hasCatalyst && (m.rvol || 0) > 1.5) archetype = "News + Volume Catalyst";
 
+    const bullets = [];
     // Super heavy: if big investor, lead thesis with exact name + quality
     if (hasSM && m.smart_money && m.smart_money.hits && m.smart_money.hits.length) {
       const hit = m.smart_money.hits[0];
@@ -745,7 +926,6 @@
       bullets.unshift(`🚨 EXACT INVESTOR: ${hit.name}${q} — S+ heavy weight, monitor closely`);
     }
 
-    const bullets = [];
     if (hasSM) bullets.push("S+ tier named smart money / politician / FII buy context in recent news");
     if (passedEntry) bullets.push(`${passedEntry} entry-setup factors (room to run, pullback, higher lows, compression)`);
     if (hasCatalyst) bullets.push("Clear catalyst(s): contracts, policy, earnings tone, guidance, or sector tailwind");
@@ -934,48 +1114,134 @@
     alertBell.classList.toggle("has-alerts", n > 0);
   }
 
-  function showAlertsPanel() {
-    const html = recentAlerts.length
-      ? recentAlerts.map(a => `<div class="alert-item"><strong>${escapeHtml(a.symbol)}</strong> <span class="muted">${escapeHtml(a.type)}</span><br><span>${escapeHtml(a.msg)}</span><div class="muted" style="font-size:0.7rem">${new Date(a.ts).toLocaleTimeString()}</div></div>`).join("")
-      : '<p class="muted">No alerts yet. High buy scores, new S+ hits, and pre-earnings setups will appear here + trigger browser notifications.</p>';
-    // Simple modal reuse or inline
-    const panel = document.createElement("div");
-    panel.className = "alerts-panel";
-    panel.innerHTML = `<div class="ap-header"><strong>Recent Alerts</strong> <button class="close-x">×</button></div><div class="ap-body">${html}</div>`;
-    document.body.appendChild(panel);
-    panel.querySelector(".close-x").onclick = () => panel.remove();
-    panel.onclick = (e) => { if (e.target === panel) panel.remove(); };
+  async function refreshAlertRulesUI() {
+    const listEl = document.getElementById("alertRulesList");
+    if (!listEl) return;
+    const rules = await loadServerAlertRules();
+    if (!rules.length) {
+      listEl.innerHTML = '<span class="muted">No rules yet. Add via form (e.g. min_buy_score 65 + rvol 2 or has_investor).</span>';
+      return;
+    }
+    listEl.innerHTML = rules.map(r => {
+      const c = r.condition || {};
+      const condStr = Object.entries(c).map(([k,v])=>`${k}:${v}`).join(" & ") || "default";
+      return `<div style="margin:2px 0;padding:2px 4px;background:#0f172a;border-radius:3px;display:flex;justify-content:space-between;align-items:center">
+        <span><strong>#${r.id}</strong> ${escapeHtml(r.rule_type)}: ${escapeHtml(condStr)} ${r.enabled?"✓":"(off)"} ${r.last_triggered? "· last:"+new Date(r.last_triggered).toLocaleDateString() : ""}</span>
+        <button class="tiny danger" data-del-rule="${r.id}">del</button>
+      </div>`;
+    }).join("");
+    // bind dels
+    listEl.querySelectorAll("[data-del-rule]").forEach(btn => {
+      btn.onclick = async (ev) => {
+        ev.stopImmediatePropagation();
+        const id = parseInt(btn.dataset.delRule);
+        await deleteServerAlertRule(id);
+        await refreshAlertRulesUI();
+      };
+    });
   }
 
-  function addToWatch(symbol, row) {
+  function showAlertRulesModal() {
+    // Fallback full modal if inline hidden
+    const rulesP = document.createElement("div");
+    rulesP.className = "alerts-panel";
+    rulesP.innerHTML = `<div class="ap-header"><strong>Alert Rules (server persisted)</strong> <button class="close-x">×</button></div>
+      <div class="ap-body"><p class="muted">Rules run on every scan using same analyze_symbol + smart_money_intel. Create via the form in ★ My List panel for best UX. Click bell for live alerts with 🚨 exact investor names.</p><div id="modalRulesList"></div></div>`;
+    document.body.appendChild(rulesP);
+    rulesP.querySelector(".close-x").onclick = () => rulesP.remove();
+    // populate
+    (async () => {
+      const ls = rulesP.querySelector("#modalRulesList");
+      const rs = await loadServerAlertRules();
+      ls.innerHTML = rs.map(r=> `<div>#${r.id} ${r.rule_type} ${JSON.stringify(r.condition||{})} <button data-del="${r.id}">x</button></div>`).join("") || "None";
+      ls.querySelectorAll("button[data-del]").forEach(b=> b.onclick= async ()=>{ await deleteServerAlertRule(b.dataset.del); ls.innerHTML="deleted; reload panel"; });
+    })();
+  }
+
+  function showAlertsPanel() {
+    // Merge client + fetch latest server for rich display (investor exact names etc)
+    (async () => {
+      const srv = await fetchRecentServerAlerts();
+      const merged = [...recentAlerts];
+      srv.forEach(sa => {
+        if (!merged.some(m => m.symbol === sa.symbol && (m.msg || "").includes(sa.message?.slice(0,30) || ""))) {
+          merged.unshift({type: sa.rule_type || "server", symbol: sa.symbol, msg: sa.message, ts: sa.triggered_at || new Date().toISOString(), score: sa.buy_score, server: true, details: sa.details});
+        }
+      });
+      const html = merged.length
+        ? merged.slice(0,25).map(a => {
+            const isSrv = a.server || a.msg?.includes("🚨 Investor");
+            const clickHint = `data-sym="${attrEsc(a.symbol)}" style="cursor:pointer" title="Click to analyze ${a.symbol}"`;
+            return `<div class="alert-item" ${clickHint}><strong>${escapeHtml(a.symbol)}</strong> <span class="muted">${escapeHtml(a.type)}</span>${isSrv?' <span style="color:#eab308">[server]</span>':''}<br><span>${escapeHtml(a.msg)}</span><div class="muted" style="font-size:0.7rem">${new Date(a.ts).toLocaleTimeString()} ${a.score? "· score "+a.score : ""}</div></div>`;
+          }).join("")
+        : '<p class="muted">No alerts yet. Server rules (buy_score>65 AND rvol>2, has S+ whale exact name, earnings+score) + local high-score/S+ will appear. Matches from smart_money_intel include full "🚨 Investor: Name (Quality)".</p>';
+      const panel = document.createElement("div");
+      panel.className = "alerts-panel";
+      panel.innerHTML = `<div class="ap-header"><strong>Recent Alerts (in-app + server)</strong> <button class="close-x">×</button></div><div class="ap-body">${html}</div>`;
+      document.body.appendChild(panel);
+      // make alert items clickable -> analyze
+      panel.querySelectorAll(".alert-item[data-sym]").forEach(item => {
+        item.onclick = (ev) => {
+          if (ev.target.closest("button")) return;
+          const sym = item.dataset.sym;
+          if (sym) {
+            panel.remove();
+            document.querySelector('.tab[data-tab="hot"]')?.click();
+            if (symbolSearch) symbolSearch.value = sym;
+            fetchFullSymbol(sym).then(full => { renderDetail(full); openFactorModal(sym, lastData||{}); }).catch(()=>{});
+          }
+        };
+      });
+      panel.querySelector(".close-x").onclick = () => panel.remove();
+      panel.onclick = (e) => { if (e.target === panel) panel.remove(); };
+    })();
+  }
+
+  function addToWatch(symbol, row, alsoCreateDefaultAlert=false) {
     symbol = symbol.toUpperCase();
     if (watchlist.find(w => w.symbol === symbol)) return;
     const m = row && row.metrics ? row.metrics : {};
-    watchlist.unshift({
+    const entry = {
       symbol,
       addedAt: new Date().toISOString(),
       addedScore: Math.round(row ? (row.buy_score ?? row.score ?? 0) : 0),
       lastScore: Math.round(row ? (row.buy_score ?? row.score ?? 0) : 0),
       lastBuy: Math.round(m.buy_score ?? row?.score ?? 0),
       lastQuality: Math.round(m.quality_score ?? 0),
-    });
+    };
+    watchlist.unshift(entry);
     saveWatch();
+    // Server persist (best effort, non-blocking for UI speed)
+    addToServerWatch(symbol, alsoCreateDefaultAlert ? "added+alert" : "").then(() => {
+      if (activeTab === "watch") renderWatch(lastData);
+    });
     renderWatch(lastData);
     // gentle nudge
     if (alertBell) {
       alertBell.style.transform = "scale(1.2)";
       setTimeout(() => { if (alertBell) alertBell.style.transform = ""; }, 400);
     }
+    // Optional quick "set alert" nudge: user can use Manage panel for full rules; auto for high conv done server-side
+    if (alsoCreateDefaultAlert) {
+      // fire a client hint; real rule eval is server on next scan
+      pushAlert("watch", symbol, "Added to server watch + monitoring for matching rules", entry.lastBuy);
+    }
   }
 
   function removeFromWatch(symbol) {
     watchlist = watchlist.filter(w => w.symbol !== symbol.toUpperCase());
     saveWatch();
+    removeFromServerWatch(symbol).then(()=>{ if (activeTab==="watch") renderWatch(lastData); });
     renderWatch(lastData);
   }
 
   function saveWatch() {
     try { localStorage.setItem("marketpulse_watchlist", JSON.stringify(watchlist)); } catch(e){}
+  }
+
+  // "Add to My List + set alert" convenience (used from hot rows / detail)
+  function addToWatchWithAlert(symbol, row) {
+    addToWatch(symbol, row, true);
   }
 
   function updateWatchFromRow(symbol, row) {
@@ -1086,7 +1352,6 @@
   function copyThesis(symbol, row) {
     const md = buildMarkdownThesis(symbol, row);
     navigator.clipboard.writeText(md).then(() => {
-      const old = event && event.target ? event.target.textContent : "";
       // non-blocking toast
       const t = document.createElement("span");
       t.textContent = " Thesis copied as Markdown ";
@@ -1390,7 +1655,7 @@
 
   function renderStats(data) {
     const s = data?.stats || {};
-    const fullScan = (s.last_price_scan || "—").slice(11, 19);
+    const fullScan = (s.last_price_scan || s.last_price_tick || "—").slice(11, 19);
     const quickPx = (s.last_quick_price || "—").slice(11, 19);
     const scanning = s.scan_in_progress;
     if (livePill) {
@@ -1409,15 +1674,15 @@
     const newsBurst = (data?.news || []).length;
 
     statsBar.innerHTML = `
-      <div class="stat-card clickable" data-stat="highconv" data-help="${attrEsc(UI_HELP.highconv)}" title="Click to filter hot list to high-conviction names only"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
-      <div class="stat-card clickable" data-stat="whale" data-help="${attrEsc(UI_HELP.whale)}" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
-      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.reset)}" title="Click to reset all filters and show hot list"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
-      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.tracked)}" title="Click to reset filters (show all tracked in hot)"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
-      <div class="stat-card clickable" data-stat="news" data-help="${attrEsc(UI_HELP.news_hits)}" title="Click to view News tab"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
-      <div class="stat-card clickable" data-stat="sectors" data-help="${attrEsc(UI_HELP.sectors)}" title="Go to Sectors tab"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
-      <div class="stat-card clickable" data-stat="earnings" data-help="${attrEsc(UI_HELP.earnings)}" title="Click to view Earnings tab"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
-      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.full_scan)}" title="Click to reset filters"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
-      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.price_tick)}" title="Click to reset filters"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
+      <button type="button" class="stat-card clickable" data-stat="highconv" data-help="${attrEsc(UI_HELP.highconv)}" title="Click to filter hot list to high-conviction names only"><span class="label">High Conv (≥70)</span><span class="value">${highConv}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="whale" data-help="${attrEsc(UI_HELP.whale)}" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><span class="label">S+ Smart Money</span><span class="value" style="color:#f59e0b">${smCount}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.reset)}" title="Click to reset all filters and show hot list"><span class="label">Hot</span><span class="value">${s.hot_count || 0}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.tracked)}" title="Click to reset filters (show all tracked in hot)"><span class="label">Tracked</span><span class="value">${s.symbols_tracked || 0}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="news" data-help="${attrEsc(UI_HELP.news_hits)}" title="Click to view News tab"><span class="label">News hits</span><span class="value">${newsBurst}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="sectors" data-help="${attrEsc(UI_HELP.sectors)}" title="Go to Sectors tab"><span class="label">Sectors</span><span class="value">${s.sector_count || 0}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="earnings" data-help="${attrEsc(UI_HELP.earnings)}" title="Click to view Earnings tab"><span class="label">Earnings 7d</span><span class="value">${s.earnings_upcoming || 0}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.full_scan)}" title="Click to reset filters"><span class="label">Full scan</span><span class="value" style="font-size:0.72rem">${fullScan}</span></button>
+      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.price_tick)}" title="Click to reset filters"><span class="label">Price tick</span><span class="value" style="font-size:0.72rem">${quickPx}</span></button>
     `;
     bindHelp(statsBar);
 
@@ -1635,7 +1900,7 @@
 
     detailEl.innerHTML = `<div class="detail">
       <h3 class="clickable" data-act="factors" title="Click for full factors checklist">${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc deep analysis</span>' : ''}</h3>
-      <div class="meta-line clickable" data-act="factors" title="Click for full analysis">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${row.market.toUpperCase()}</div>
+      <div class="meta-line clickable" data-act="factors" title="Click for full analysis">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${escapeHtml((row.market || m.market || "—").toUpperCase())}</div>
       ${clickableSmBlock}
       <!-- Super prominent immediate smart money display: exact name + how good (quality) -->
       ${(() => {
@@ -1676,7 +1941,7 @@
       ${alerts ? `<ul class="alerts">${alerts}</ul>` : ""}
       <p class="muted section-label">Top passed checks (click factors button for all + weights)</p>
       <div class="factor-chips">${factorChips || '<span class="muted">None yet</span>'}${more}</div>
-      <div style="margin-top:0.4rem"><button class="tiny" data-act="whale">🐳 Whale details</button> <button class="tiny" data-act="thesis">Copy full thesis</button> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button></div>
+      <div style="margin-top:0.4rem"><button class="tiny" data-act="whale">🐳 Whale details</button> <button class="tiny" data-act="thesis">Copy full thesis</button> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button> <button class="tiny" data-act="watch-alert" title="Add to server watchlist + enable monitoring for personalized rules (investor moves etc)">★ Watch + Alert</button></div>
     </div>`;
 
     detailEl.querySelector(".detail-factor-btn")?.addEventListener("click", () => {
@@ -1887,6 +2152,23 @@
         const msg = JSON.parse(ev.data);
         if (msg.type === "update" && msg.data) {
           applyUpdate(msg.data);
+        } else if (msg.type === "alert" && msg.alert) {
+          // Server-pushed personalized rule alert: rich text e.g. with exact "🚨 Investor: ..."
+          const a = msg.alert;
+          pushAlert(a.rule_type || "server_rule", a.symbol, a.message || a.msg, a.buy_score);
+          // Also surface in recent server list
+          recentAlerts.unshift({type: a.rule_type||"server", symbol:a.symbol, msg: a.message, ts: a.triggered_at || a.ts || new Date().toISOString(), score: a.buy_score, server:true});
+          if (recentAlerts.length > 30) recentAlerts.pop();
+          renderAlertBell();
+          // If high priority (investor), optionally auto flash
+          if ((a.message || "").includes("🚨 Investor") || (a.details && a.details.has_investor)) {
+            if (alertBell) {
+              alertBell.style.background = "#eab308";
+              setTimeout(()=>{ if(alertBell) alertBell.style.background=""; }, 900);
+            }
+          }
+          // sync watches if server may have auto-added
+          loadServerWatches().then(() => { if (activeTab === "watch") renderWatch(lastData); });
         }
       } catch (e) {
         console.error(e);
@@ -1926,6 +2208,16 @@
       });
     }
     renderAlertBell();
+    // Ingest server alerts from snapshot (for restart / multi dev replay of rich investor alerts)
+    if (data.alerts && Array.isArray(data.alerts)) {
+      data.alerts.forEach(sa => {
+        if (!recentAlerts.some(ra => ra.symbol === sa.symbol && ra.msg === sa.message)) {
+          recentAlerts.unshift({type: sa.rule_type || "server", symbol: sa.symbol, msg: sa.message, ts: sa.triggered_at, score: sa.buy_score, server: true});
+        }
+      });
+      if (recentAlerts.length > 30) recentAlerts.length = 30;
+      renderAlertBell();
+    }
     renderRadar(data);
 
     renderStats(data);
@@ -1960,6 +2252,8 @@
       if (rankingsChanged) void renderFactorModalBody(row);
     }
     if (activeTab === "watch") renderWatch(data);
+    // Occasional server watch refresh on live updates (keeps multi-device in sync without spam)
+    if (Math.random() < 0.12) loadServerWatches().catch(()=>{});
   }
 
   async function pollSnapshot() {
@@ -1973,6 +2267,12 @@
   }
 
   loadFactorCatalog();
+  syncStickyOffsets();
+  window.addEventListener("resize", syncStickyOffsets);
+  if ("ResizeObserver" in window) {
+    const topbar = document.querySelector(".topbar");
+    if (topbar) new ResizeObserver(syncStickyOffsets).observe(topbar);
+  }
   connect();
   setInterval(pollSnapshot, 15000);
 

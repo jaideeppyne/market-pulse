@@ -29,6 +29,9 @@ class AppState:
     earnings: list[dict[str, Any]] = field(default_factory=list)
     earnings_by_symbol: dict[str, dict[str, Any]] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
+    # Persisted watchlist + alerts (loaded from DB on demand / startup; augmented in snapshot)
+    watches: list[dict[str, Any]] = field(default_factory=list)
+    recent_server_alerts: list[dict[str, Any]] = field(default_factory=list)  # latest triggered for WS push convenience
     started_at: str = field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
     )
@@ -375,4 +378,7 @@ class AppState:
                 "cycle_overview": list(self.cycle_overview),
                 "scan_generation": self.scan_generation,
                 "live_tick": self.live_tick,
+                # Server watch + alerts for multi-device + restart safety (populated by main endpoints / eval)
+                "watches": list(getattr(self, "watches", []) or []),
+                "alerts": list(getattr(self, "recent_server_alerts", [])[-30:]),
             }

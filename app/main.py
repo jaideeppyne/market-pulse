@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -14,13 +15,26 @@ from fastapi.staticfiles import StaticFiles
 from app.config import load_config
 from app.db import (
     DB_PATH,
+    add_alert_rule,
+    add_to_watchlist,
     db_file_size_mb,
+    delete_alert_rule,
+    evaluate_rules_for_snapshot,
+    get_or_create_default_rules,
     init_db,
-    recent_news,
+    insert_alert,
+    list_alert_rules,
+    list_watchlist,
+    recent_alerts,
+    recent_market_events,
     recent_strong_snapshots,
+    recent_strong_snapshots_with_outcomes,
+    remove_from_watchlist,
     snapshots_for_symbol,
     upcoming_earnings,
+    update_alert_rule_last_triggered,
 )
+from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
 from app.universe import build_universe
 from app.workers.scanner_loop import ScannerLoop
@@ -56,14 +70,122 @@ async def _push_ws_update() -> None:
         ws_clients.discard(ws)
 
 
+async def _push_alert_event(alert_item: dict) -> None:
+    """Dedicated immediate alert push for high-conviction / rule matches (rich text preserved)."""
+    if not ws_clients:
+        return
+    payload = {
+        "type": "alert",
+        "alert": alert_item,
+        "ts": alert_item.get("ts") or alert_item.get("triggered_at"),
+    }
+    msg = json.dumps(payload, separators=(",", ":"))
+    dead: list[WebSocket] = []
+    for ws in list(ws_clients):
+        try:
+            await ws.send_text(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        ws_clients.discard(ws)
+
+
+async def _refresh_state_watches_and_alerts() -> None:
+    """Load persisted into state for snapshot + restart safety."""
+    try:
+        w = await list_watchlist()
+        async with state.lock:
+            state.watches = w
+        al = await recent_alerts(limit=30)
+        async with state.lock:
+            state.recent_server_alerts = al
+    except Exception:
+        pass
+
+
+async def _evaluate_and_fire_alerts(data_for_eval: dict | None = None, symbols_rows: list[dict] | None = None) -> list[dict]:
+    """
+    Run rule engine against current hot + investor_events (exact same smart_money + scoring data).
+    For each triggered: insert to alerts+market_events, update rule last_triggered, push WS + update state.
+    Auto-add high priority matches to watchlist (per spec).
+    """
+    try:
+        trigs = await evaluate_rules_for_snapshot(data_for_eval, symbols_rows)
+        fired = []
+        for t in trigs:
+            sym = t["symbol"]
+            msg = t["message"]
+            rid = t.get("rule_id")
+            rtype = t.get("rule_type")
+            bs = t.get("buy_score")
+            det = t.get("details", {})
+            # Persist
+            aid = await insert_alert(
+                symbol=sym,
+                message=msg,
+                rule_id=rid,
+                rule_type=rtype,
+                buy_score=bs,
+                details=det,
+            )
+            if rid:
+                await update_alert_rule_last_triggered(rid)  # need import? wait we'll add
+            # Auto-add to watch if high conviction (investor or high score)
+            if det.get("has_investor") or (bs and bs >= 65):
+                try:
+                    await add_to_watchlist(sym, notes="auto from alert rule")
+                except Exception:
+                    pass
+            # Update in-memory recent
+            alert_rec = {
+                "id": aid,
+                "symbol": sym,
+                "rule_id": rid,
+                "rule_type": rtype,
+                "message": msg,
+                "triggered_at": t.get("ts"),
+                "buy_score": bs,
+                "details": det,
+            }
+            async with state.lock:
+                state.recent_server_alerts = [alert_rec] + [a for a in state.recent_server_alerts if a.get("symbol") != sym][:29]
+                # also sync watches if auto-added
+                if any(ww.get("symbol") == sym for ww in state.watches):
+                    pass
+                else:
+                    state.watches = [{"symbol": sym, "added_at": t.get("ts"), "notes": "auto"}] + state.watches[:199]
+            # Immediate WS alert (rich "🚨 Investor: ..." preserved in message)
+            await _push_alert_event(alert_rec)
+            fired.append(alert_rec)
+        if fired:
+            # Also cause full snapshot push
+            state.broadcast_event.set()
+        return fired
+    except Exception as e:
+        logger.warning("Alert rule eval failed: %s", e)
+        return []
+
+
 async def broadcast_loop() -> None:
-    """Push when scan/news/prices change; heartbeat every 20s for connection keepalive."""
+    """Push when scan/news/prices change; heartbeat every 20s for connection keepalive.
+    Also evaluate personalized alert rules here (on scan updates) against hot + investor_events.
+    Fires server alerts (WS 'alert' + persisted + auto-watch for high-conviction exact investor moves).
+    """
     while True:
         try:
             await asyncio.wait_for(state.broadcast_event.wait(), timeout=20.0)
         except asyncio.TimeoutError:
             pass
         state.broadcast_event.clear()
+        # Refresh watches/alerts from DB for snapshot accuracy
+        await _refresh_state_watches_and_alerts()
+        # Evaluate rules on the fresh snapshot data (reuses exact analyze/smart_money/investor_events pipeline)
+        try:
+            snap = await state.snapshot(light=False)
+            # Use full for earnings/investor, but slim hot is ok
+            await _evaluate_and_fire_alerts(snap, list(snap.get("hot") or []))
+        except Exception:
+            pass
         await _push_ws_update()
 
 
@@ -77,11 +199,21 @@ async def lifespan(app: FastAPI):
     cached = await upcoming_earnings(days_ahead)
     if cached:
         await state.update_earnings(cached)
+    stored_events = await recent_market_events(limit=250)
+    if stored_events:
+        await state.update_events(stored_events)
+        await state.update_candidates(build_event_candidates(state.events_by_symbol, state.symbols))
+    # Load server watchlists + alert rules + seed defaults + recent alerts (restart-safe, multi-device)
+    await get_or_create_default_rules()
+    await _refresh_state_watches_and_alerts()
     logger.info(
-        "Universe loaded: US=%d India=%d | cached earnings: %d",
+        "Universe loaded: US=%d India=%d | cached earnings: %d | cached events: %d | watches: %d | alert_rules: %d",
         len(state.universe.get("us", [])),
         len(state.universe.get("india", [])),
         len(cached),
+        len(stored_events),
+        len(state.watches),
+        len(await list_alert_rules()),
     )
     scanner = ScannerLoop(cfg, state)
     scan_task = asyncio.create_task(scanner.start())
@@ -183,6 +315,7 @@ async def api_symbol(symbol: str, refresh: bool = False):
     # so that news_*, smart_money_*, catalyst factors work the same as for hot list stocks.
     news_count = 0
     news_titles: list[str] = []
+    market_events: list[dict] = []
     earn = None
     try:
         async with state.lock:
@@ -190,6 +323,10 @@ async def api_symbol(symbol: str, refresh: bool = False):
             news_titles = list(
                 state.news_titles_by_symbol.get(norm_sym, [])
                 or state.news_titles_by_symbol.get(upper, [])
+            )
+            market_events = list(
+                state.events_by_symbol.get(norm_sym, [])
+                or state.events_by_symbol.get(upper, [])
             )
             earn = state.earnings_by_symbol.get(norm_sym) or state.earnings_by_symbol.get(upper)
 
@@ -219,6 +356,7 @@ async def api_symbol(symbol: str, refresh: bool = False):
             None,  # legacy weights (ignored by current engine)
             earnings=earn,
             news_titles=news_titles,
+            market_events=market_events,
             calendar=calendar,
         )
     except Exception as e:
@@ -257,6 +395,48 @@ async def api_news(limit: int = 80):
     db_news = await recent_news(limit)
     snap = await state.snapshot()
     return {"live": snap.get("news", []), "stored": db_news}
+
+
+@app.get("/api/events")
+@app.get("/api/events/recent")
+async def api_events(limit: int = 100, symbol: str | None = None):
+    safe_limit = max(1, min(limit, 500))
+    sym = symbol.upper() if symbol else None
+    stored = await recent_market_events(limit=safe_limit, symbol=sym)
+    async with state.lock:
+        if sym:
+            live = list(state.events_by_symbol.get(sym, []))[:safe_limit]
+        else:
+            live = list(state.events[:safe_limit])
+    return {
+        "symbol": sym,
+        "limit": safe_limit,
+        "live": live,
+        "stored": stored,
+        "count": len(live),
+    }
+
+
+@app.get("/api/candidates")
+async def api_candidates(limit: int = 120, refresh: bool = False):
+    safe_limit = max(1, min(limit, 300))
+    if refresh:
+        async with state.lock:
+            events_by_symbol = {
+                sym: list(events)
+                for sym, events in state.events_by_symbol.items()
+            }
+            symbols_cache = dict(state.symbols)
+        await state.update_candidates(
+            build_event_candidates(events_by_symbol, symbols_cache, limit=300)
+        )
+    async with state.lock:
+        candidates = list(state.candidates[:safe_limit])
+    return {
+        "limit": safe_limit,
+        "count": len(candidates),
+        "candidates": candidates,
+    }
 
 
 @app.get("/api/factors")
@@ -373,6 +553,10 @@ async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180)
         current_syms = set(s["symbol"] for s in (getattr(state, "hot", []) or []))
         news_titles_map = dict(state.news_titles_by_symbol or {})
         earn_map = dict(state.earnings_by_symbol or {})
+        events_by_symbol = {
+            sym: list(events)
+            for sym, events in (state.events_by_symbol or {}).items()
+        }
 
     # Pick additional symbols not in current hot (to surface "new" discoveries)
     candidates = [s for s in full_pool if s not in current_syms]
@@ -397,7 +581,10 @@ async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180)
                 try:
                     sig = analyze_symbol(
                         sym, market, hist, info or {}, len(nt), None,
-                        earnings=earn, news_titles=nt, calendar=calendar
+                        earnings=earn,
+                        news_titles=nt,
+                        market_events=events_by_symbol.get(sym, []),
+                        calendar=calendar,
                     )
                     if (sig.score or 0) >= min_score:
                         payload = {
@@ -455,36 +642,41 @@ async def api_full_exhaustive_scan():
         nc = dict(state.news_by_symbol or {})
         nt = dict(state.news_titles_by_symbol or {})
         em = dict(state.earnings_by_symbol or {})
+        events_by_symbol = {
+            sym: list(events)
+            for sym, events in (state.events_by_symbol or {}).items()
+        }
     job_id = str(uuid.uuid4())
     async with state.lock:
         state.jobs[job_id] = {"status": "running", "progress": 0, "started": datetime.now(timezone.utc).isoformat(), "result": None, "error": None}
-    def _run_job():
-        new_loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(new_loop)
+
+    async def _run_job():
+        async with state.lock:
+            if job_id in state.jobs:
+                state.jobs[job_id]["progress"] = 5
+        state.broadcast_event.set()
+
+        def _blocking_scan():
+            return asyncio.run(full_exhaustive_scan(pool, nc, nt, em, events_by_symbol))
+
         try:
-            res = new_loop.run_until_complete(full_exhaustive_scan(pool, nc, nt, em))
-            async def _finish():
-                async with state.lock:
-                    if job_id in state.jobs:
-                        state.jobs[job_id].update({"status": "done", "progress": 100, "result": {
-                            "scanned": len(pool),
-                            "opportunities_found": len(res),
-                            "results": res[:200],
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        }})
-                        state.full_exhaustive_results = state.jobs[job_id]["result"]
-                state.broadcast_event.set()
-            asyncio.run_coroutine_threadsafe(_finish(), asyncio.get_event_loop())
+            res = await asyncio.to_thread(_blocking_scan)
+            async with state.lock:
+                if job_id in state.jobs:
+                    state.jobs[job_id].update({"status": "done", "progress": 100, "result": {
+                        "scanned": len(pool),
+                        "opportunities_found": len(res),
+                        "results": res[:200],
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                    }})
+                    state.full_exhaustive_results = state.jobs[job_id]["result"]
         except Exception as e:
-            async def _err():
-                async with state.lock:
-                    if job_id in state.jobs:
-                        state.jobs[job_id].update({"status": "error", "error": str(e)[:200]})
-                state.broadcast_event.set()
-            asyncio.run_coroutine_threadsafe(_err(), asyncio.get_event_loop())
-    import concurrent.futures
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
-        ex.submit(_run_job)
+            async with state.lock:
+                if job_id in state.jobs:
+                    state.jobs[job_id].update({"status": "error", "error": str(e)[:200]})
+        state.broadcast_event.set()
+
+    asyncio.create_task(_run_job())
     return {"job_id": job_id, "status": "started", "note": "Use /api/job_status or WS for updates. Long running."}
 
 
@@ -521,6 +713,75 @@ async def health():
     stats["db_path"] = str(DB_PATH)
     stats["db_size_mb"] = db_file_size_mb()
     return {"status": "ok", "stats": stats}
+
+
+# ===================== Watchlist + Alert Rules CRUD (server-persisted) =====================
+
+@app.get("/api/watchlist")
+async def api_list_watchlist():
+    items = await list_watchlist()
+    async with state.lock:
+        state.watches = items
+    return {"watches": items, "count": len(items)}
+
+
+@app.post("/api/watchlist")
+async def api_add_watch(payload: dict):
+    sym = (payload.get("symbol") or "").strip().upper()
+    notes = payload.get("notes") or ""
+    if not sym:
+        return {"error": "symbol required"}
+    ok = await add_to_watchlist(sym, notes)
+    await _refresh_state_watches_and_alerts()
+    state.broadcast_event.set()
+    return {"ok": ok, "symbol": sym, "watches": await list_watchlist()}
+
+
+@app.delete("/api/watchlist/{symbol:path}")
+async def api_remove_watch(symbol: str):
+    from urllib.parse import unquote
+    sym = unquote(symbol).upper()
+    await remove_from_watchlist(sym)
+    await _refresh_state_watches_and_alerts()
+    state.broadcast_event.set()
+    return {"ok": True, "symbol": sym}
+
+
+@app.get("/api/alert_rules")
+async def api_list_alert_rules():
+    rules = await list_alert_rules()
+    return {"rules": rules, "count": len(rules)}
+
+
+@app.post("/api/alert_rules")
+async def api_add_alert_rule(payload: dict):
+    rtype = payload.get("rule_type", "custom")
+    cond = payload.get("condition") or payload.get("conditions") or {}
+    enabled = payload.get("enabled", True)
+    rid = await add_alert_rule(rtype, cond, bool(enabled))
+    return {"id": rid, "rule_type": rtype, "condition": cond, "enabled": bool(enabled)}
+
+
+@app.delete("/api/alert_rules/{rule_id}")
+async def api_delete_alert_rule(rule_id: int):
+    await delete_alert_rule(rule_id)
+    return {"ok": True, "id": rule_id}
+
+
+@app.post("/api/alert_rules/eval")
+async def api_manual_eval_alerts():
+    """Manual trigger for testing/eval against current state snapshot + hot + investor_events."""
+    snap = await state.snapshot(light=False)
+    fired = await _evaluate_and_fire_alerts(snap, snap.get("hot", []))
+    return {"fired": len(fired), "alerts": fired}
+
+
+@app.get("/api/alerts/recent")
+async def api_recent_alerts(limit: int = 50):
+    al = await recent_alerts(limit)
+    async with state.lock:
+        state.recent_server_alerts = al[:30]
+    return {"alerts": al, "count": len(al)}
 
 
 @app.websocket("/ws")

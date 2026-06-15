@@ -96,11 +96,13 @@
   <!-- MY LIST / WATCH -->
   <main class="tab-panel" id="panel-watch" hidden>
     <section class="panel">
-      <h2>★ My List — personal watch with history & memory</h2>
-      <p class="panel-hint">Add any ticker (from Hot, Analyze, Earnings, or search). Scores and factors persist locally. Click row for full engine re-check + thesis. Local only (no account).</p>
+      <h2>★ My List — server-persisted + personalized alert rules</h2>
+      <p class="panel-hint">Server-backed (multi-device / restart safe). Add from Hot/Detail/Earnings. <strong>Alert Rules</strong> below trigger in-app + browser notifications for exact investor moves, buy_score>65 + rvol>2 etc. (reuses full analyze + smart_money naming).</p>
       <div class="toolbar">
         <button type="button" id="exportWatchBtn" class="btn small">Export CSV</button>
         <button type="button" id="clearWatchBtn" class="btn small danger">Clear list</button>
+        <button type="button" id="manageAlertRulesBtn" class="btn small" title="Create / manage personalized alert rules (e.g. min buy score + has S+ whale + rvol)">🔔 Manage Alert Rules</button>
+        <button type="button" id="refreshServerWatchBtn" class="btn small">↻ Sync Server</button>
         <span id="watchCount" class="muted"></span>
       </div>
       <div class="table-wrap">
@@ -118,7 +120,27 @@
           <tbody></tbody>
         </table>
       </div>
-      <p class="muted" id="watchHint">Use the search box + Analyze, then "★ Watch" from the detail panel. Or click ★ in hot rows.</p>
+      <p class="muted" id="watchHint">Server-synced. Use "★ Watch + Alert" from detail/hot rows for quick add. Click alerts bell for live server-pushed high-conviction (🚨 Investor exact name preserved).</p>
+
+      <!-- Simple inline Alert Rules manager (toggleable; full CRUD via modal too) -->
+      <div id="alertRulesSection" style="margin-top:1rem;border-top:1px solid #334155;padding-top:0.75rem;display:none;">
+        <h4 style="margin:0 0 0.4rem">Active Alert Rules (server)</h4>
+        <div id="alertRulesList" style="font-size:0.85rem;margin-bottom:0.5rem"></div>
+        <div class="toolbar" style="gap:4px;flex-wrap:wrap">
+          <select id="ruleTypeSel">
+            <option value="score">score (buy_score + rvol)</option>
+            <option value="smart_money">smart_money (has S+ investor)</option>
+            <option value="earnings">earnings (near + score)</option>
+            <option value="custom">custom</option>
+          </select>
+          <input id="ruleMinScore" type="number" placeholder="min buy_score" value="65" style="width:90px" />
+          <input id="ruleMinRvol" type="number" step="0.5" placeholder="min rvol" value="2" style="width:70px" />
+          <label style="font-size:0.75rem"><input type="checkbox" id="ruleHasInvestor" checked /> has S+/whale/politician</label>
+          <button type="button" id="addRuleBtn" class="btn tiny">Add Rule</button>
+          <button type="button" id="hideRulesBtn" class="btn tiny">Hide</button>
+        </div>
+        <p class="muted" style="font-size:0.7rem">Rules evaluated live on scans. Matches push WS "alert", auto-add high-conv to watchlist, log to market_events. Exact investor names from smart_money_intel + crawler.</p>
+      </div>
     </section>
   </main>
 

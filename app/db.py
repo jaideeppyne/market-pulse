@@ -47,9 +47,11 @@ async def init_db() -> None:
                 eps_high REAL,
                 eps_low REAL,
                 revenue_avg REAL,
+                call_time TEXT,
                 from_news INTEGER DEFAULT 0,
                 news_title TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_earnings_date ON earnings(earnings_date);
 
@@ -85,8 +87,51 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_market_events_symbol ON market_events(symbol, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_market_events_type ON market_events(event_type, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_market_events_created ON market_events(created_at DESC);
+
+            -- Server-persisted watchlists (shared for instance; multi-user can be extended later with user_id)
+            CREATE TABLE IF NOT EXISTS user_watchlist (
+                symbol TEXT PRIMARY KEY,
+                added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_watchlist_added ON user_watchlist(added_at DESC);
+
+            -- Personalized alert rules (e.g. score + rvol + investor; smart_money; earnings etc)
+            CREATE TABLE IF NOT EXISTS alert_rules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_type TEXT NOT NULL,  -- 'score', 'smart_money', 'earnings', 'custom'
+                condition_json TEXT NOT NULL,  -- JSON: {"min_buy_score":65,"min_rvol":2.0,"has_investor":true,"earnings_within_days":3,"investor_types":["india_legend","us_legend","politician"]}
+                enabled INTEGER DEFAULT 1,
+                last_triggered TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Persisted triggered alerts (for history + multi-device replay). Rich investor text preserved.
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                rule_id INTEGER,
+                rule_type TEXT,
+                message TEXT NOT NULL,
+                triggered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                buy_score REAL,
+                details_json TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_alerts_symbol ON alerts(symbol, triggered_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_alerts_triggered ON alerts(triggered_at DESC);
             """
         )
+        cur = await db.execute("PRAGMA table_info(earnings)")
+        existing_cols = {row[1] for row in await cur.fetchall()}
+        for col, ddl in {
+            "call_time": "ALTER TABLE earnings ADD COLUMN call_time TEXT",
+            "from_news": "ALTER TABLE earnings ADD COLUMN from_news INTEGER DEFAULT 0",
+            "news_title": "ALTER TABLE earnings ADD COLUMN news_title TEXT",
+            "created_at": "ALTER TABLE earnings ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+            "updated_at": "ALTER TABLE earnings ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+        }.items():
+            if col not in existing_cols:
+                await db.execute(ddl)
         await db.commit()
 
 
@@ -489,3 +534,332 @@ async def recent_strong_snapshots_with_outcomes(days: int = 2, min_score: float 
         except Exception as e:
             s["outcomes"] = {"error": str(e)[:100]}
     return snaps
+
+
+# ===================== Server Watchlists + Alert Rules (new) =====================
+
+async def add_to_watchlist(symbol: str, notes: str = "") -> bool:
+    """Add symbol to persisted watchlist. Idempotent."""
+    sym = symbol.strip().upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute(
+                "INSERT OR IGNORE INTO user_watchlist (symbol, notes) VALUES (?, ?)",
+                (sym, notes or None),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            return False
+
+
+async def remove_from_watchlist(symbol: str) -> None:
+    sym = symbol.strip().upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM user_watchlist WHERE symbol = ?", (sym,))
+        await db.commit()
+
+
+async def list_watchlist() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT symbol, added_at, notes FROM user_watchlist ORDER BY added_at DESC"
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def add_alert_rule(rule_type: str, condition: dict, enabled: bool = True) -> int:
+    """Create rule. Returns new rule id."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            INSERT INTO alert_rules (rule_type, condition_json, enabled)
+            VALUES (?, ?, ?)
+            """,
+            (rule_type, json.dumps(condition or {}), 1 if enabled else 0),
+        )
+        await db.commit()
+        return cur.lastrowid
+
+
+async def list_alert_rules() -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT id, rule_type, condition_json, enabled, last_triggered, created_at FROM alert_rules ORDER BY created_at DESC"
+        )
+        out = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            try:
+                d["condition"] = json.loads(d.get("condition_json") or "{}")
+            except Exception:
+                d["condition"] = {}
+            d["enabled"] = bool(d.get("enabled", 1))
+            out.append(d)
+        return out
+
+
+async def delete_alert_rule(rule_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM alert_rules WHERE id = ?", (int(rule_id),))
+        await db.commit()
+
+
+async def update_alert_rule_last_triggered(rule_id: int, ts: str | None = None) -> None:
+    ts = ts or utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE alert_rules SET last_triggered = ? WHERE id = ?",
+            (ts, int(rule_id)),
+        )
+        await db.commit()
+
+
+async def insert_alert(
+    symbol: str,
+    message: str,
+    rule_id: int | None = None,
+    rule_type: str | None = None,
+    buy_score: float | None = None,
+    details: dict | None = None,
+) -> int:
+    """Store a triggered alert. Returns id. Also logs high-severity to market_events for history."""
+    sym = symbol.upper()
+    now = utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            INSERT INTO alerts (symbol, rule_id, rule_type, message, triggered_at, buy_score, details_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                sym,
+                rule_id,
+                rule_type,
+                message,
+                now,
+                buy_score,
+                json.dumps(details or {}),
+            ),
+        )
+        alert_id = cur.lastrowid
+        await db.commit()
+
+    # Bonus: log to market_events for unified history (high conviction investor moves etc.)
+    try:
+        await insert_market_event(
+            {
+                "event_key": f"alert:{sym}:{now[:19]}",
+                "symbol": sym,
+                "market": "us" if not sym.endswith((".NS", ".BO")) else "india",
+                "event_type": "alert_trigger",
+                "severity": 8.0 if "INVESTOR" in (message or "").upper() or "SMART" in (message or "").upper() else 5.0,
+                "source": "alert_rule",
+                "title": message[:200],
+                "actor_name": (details or {}).get("investor_name"),
+                "actor_role": rule_type or "rule",
+                "published_at": now,
+                "raw_payload": {"rule_id": rule_id, "alert_id": alert_id, "buy_score": buy_score},
+            }
+        )
+    except Exception:
+        pass
+    return alert_id
+
+
+async def recent_alerts(limit: int = 50) -> list[dict]:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT id, symbol, rule_id, rule_type, message, triggered_at, buy_score, details_json
+            FROM alerts ORDER BY triggered_at DESC LIMIT ?
+            """,
+            (limit,),
+        )
+        out = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            try:
+                d["details"] = json.loads(d.get("details_json") or "{}")
+            except Exception:
+                d["details"] = {}
+            out.append(d)
+        return out
+
+
+def _get_metric(row: dict, key: str, default=None):
+    """Helper to dig buy_score / rvol etc from snapshot row or analyze payload."""
+    m = row.get("metrics") or row.get("m") or {}
+    if key == "buy_score":
+        return row.get("buy_score") or row.get("score") or m.get("buy_score") or m.get("score") or default
+    if key == "rvol":
+        return m.get("rvol") or m.get("relative_volume") or row.get("rvol") or default
+    if key == "score":
+        return row.get("score") or m.get("score") or default
+    return m.get(key, row.get(key, default))
+
+
+async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: list[dict] | None = None) -> list[dict]:
+    """
+    Core evaluator. Reuses the shape from hot rows / analyze_symbol results + investor_events.
+    Returns list of triggered alert dicts ready for insert + WS push.
+    Supports example rules: {"min_buy_score":65, "min_rvol":2, "has_investor":true }
+    + smart_money specific, earnings etc.
+    """
+    rules = await list_alert_rules()
+    enabled_rules = [r for r in rules if r.get("enabled")]
+    if not enabled_rules:
+        return []
+
+    # Collect candidate rows: prefer explicit symbols_data or hot from snapshot
+    candidates: list[dict] = []
+    if symbols_data:
+        candidates = list(symbols_data)
+    elif data:
+        candidates = list(data.get("hot") or [])
+        # also merge from hot_by_market if present
+        for mkt in ("us", "india"):
+            candidates.extend(data.get("hot_by_market", {}).get(mkt, []) or [])
+    if not candidates:
+        return []
+
+    # Also fold in recent investor_events for "has_investor" and rich naming
+    investor_map: dict[str, list[dict]] = {}
+    inv_events = (data or {}).get("investor_events") or []
+    for ev in inv_events[-50:]:
+        s = (ev.get("symbol") or "").upper()
+        if s:
+            investor_map.setdefault(s, []).append(ev)
+
+    triggered = []
+    seen_trigger_keys = set()  # avoid dup per (symbol,rule) in one eval pass
+
+    for rule in enabled_rules:
+        cond = rule.get("condition") or {}
+        min_bs = cond.get("min_buy_score") or cond.get("min_score")
+        min_rvol = cond.get("min_rvol") or cond.get("rvol")
+        has_investor = bool(cond.get("has_investor") or cond.get("has_smart_money") or cond.get("smart_money"))
+        earnings_days = cond.get("earnings_within_days") or cond.get("earnings_in_days")
+        investor_types = cond.get("investor_types") or []  # e.g. ["india_legend","politician"]
+        rule_type = rule.get("rule_type", "custom")
+
+        for row in candidates:
+            sym = (row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            key = (sym, rule["id"])
+            if key in seen_trigger_keys:
+                continue
+
+            bs = _get_metric(row, "buy_score")
+            rvol = _get_metric(row, "rvol")
+            sc = _get_metric(row, "score")
+
+            match = True
+            reasons = []
+
+            if min_bs is not None:
+                if bs is None or float(bs) < float(min_bs):
+                    match = False
+                else:
+                    reasons.append(f"buy_score>={min_bs}")
+
+            if min_rvol is not None and match:
+                if rvol is None or float(rvol) < float(min_rvol):
+                    match = False
+                else:
+                    reasons.append(f"rvol>={min_rvol}")
+
+            has_inv_hit = False
+            inv_name = None
+            inv_quality = None
+            # Check from row metrics (preferred - from analyze/smart_money)
+            sm = (row.get("metrics") or {}).get("smart_money") or {}
+            if sm and sm.get("hits"):
+                hits = sm.get("hits") or []
+                if hits:
+                    primary = hits[0]
+                    inv_name = primary.get("name")
+                    inv_quality = primary.get("quality")
+                    kind = primary.get("kind")
+                    if not investor_types or kind in investor_types:
+                        has_inv_hit = True
+            # Also from investor_events in snapshot (Form4 / insider crawler)
+            if not has_inv_hit and sym in investor_map:
+                for ev in investor_map[sym]:
+                    inv_name = ev.get("investor_name") or inv_name
+                    inv_quality = ev.get("investor_quality") or inv_quality
+                    if not investor_types or any(t in (ev.get("event_type") or "") for t in investor_types):
+                        has_inv_hit = True
+                        break
+
+            if has_investor and match:
+                if not has_inv_hit:
+                    match = False
+                else:
+                    reasons.append("has_investor")
+
+            # Earnings proximity (use earnings in snapshot if present, or row)
+            if earnings_days is not None and match:
+                # earnings may be in aug_earnings or separate
+                earn_days = row.get("days_until")
+                if earn_days is None and data:
+                    for e in (data.get("earnings") or []):
+                        if e.get("symbol") == sym:
+                            earn_days = e.get("days_until")
+                            break
+                if earn_days is None or int(earn_days) > int(earnings_days):
+                    match = False
+                else:
+                    reasons.append(f"earnings<={earnings_days}d")
+
+            if match:
+                # Build rich message reusing smart_money style text
+                msg_parts = reasons or ["rule matched"]
+                msg = f"Rule {rule_type}: {', '.join(msg_parts)}"
+                if has_inv_hit and inv_name:
+                    q = f" ({inv_quality})" if inv_quality else ""
+                    # Match the exact style used in radar/thesis: "🚨 Investor: Name (Quality)"
+                    rich = f"🚨 Investor: {inv_name}{q}"
+                    if rich not in msg:
+                        msg = f"{msg} — {rich}"
+                elif sm.get("primary_alert"):
+                    msg = f"{msg} — {sm['primary_alert']}"
+
+                trig = {
+                    "symbol": sym,
+                    "rule_id": rule["id"],
+                    "rule_type": rule_type,
+                    "message": msg,
+                    "buy_score": float(bs) if bs is not None else sc,
+                    "details": {
+                        "conditions": cond,
+                        "investor_name": inv_name,
+                        "investor_quality": inv_quality,
+                        "has_investor": has_inv_hit,
+                        "rvol": rvol,
+                        "score": sc,
+                        "primary_alert": sm.get("primary_alert"),
+                    },
+                    "ts": utc_now(),
+                }
+                triggered.append(trig)
+                seen_trigger_keys.add(key)
+
+    return triggered
+
+
+async def get_or_create_default_rules() -> None:
+    """Seed a couple of useful default rules on first run if none exist (idempotent-ish)."""
+    rules = await list_alert_rules()
+    if rules:
+        return
+    # Example high-conviction: buy_score>65 AND rvol>2 (user example in request)
+    await add_alert_rule("score", {"min_buy_score": 65, "min_rvol": 2.0})
+    # Smart money + high score (exact investor moves)
+    await add_alert_rule("smart_money", {"min_buy_score": 55, "has_investor": True})
+    # Pre-earnings high conviction
+    await add_alert_rule("earnings", {"min_buy_score": 60, "earnings_within_days": 3})
