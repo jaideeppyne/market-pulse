@@ -71,12 +71,20 @@ class AppState:
         )
         hot_all = [x for x in all_items if x.get("score", 0) >= threshold]
         self.hot = hot_all[:top_n]
-        us = [x for x in all_items if x.get("market") == "us" and x.get("score", 0) >= threshold]
+        # Global hot stays strict (above threshold, top N overall).
+        # Per-market lists are the *best currently scored* for that market (top N by score).
+        # This makes the "India" (and "US") tabs in the UI useful even when the global hot
+        # list is small or dominated by the other market, or early in a scan batch.
+        # We still respect a soft floor so very low-quality names don't pollute the market tab.
+        soft_floor = max(20, threshold * 0.6)  # e.g. ~23 if threshold=38
+        us = [x for x in all_items if x.get("market") == "us" and x.get("score", 0) >= soft_floor]
         india = [
             x
             for x in all_items
-            if x.get("market") == "india" and x.get("score", 0) >= threshold
+            if x.get("market") == "india" and x.get("score", 0) >= soft_floor
         ]
+        us.sort(key=lambda x: x.get("score", 0), reverse=True)
+        india.sort(key=lambda x: x.get("score", 0), reverse=True)
         self.hot_by_market = {
             "us": us[:top_n],
             "india": india[:top_n],

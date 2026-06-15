@@ -300,16 +300,47 @@
 
   function getHotPool(data) {
     if (!data) return [];
-    if (marketFilter === "us" && data.hot_by_market?.us?.length) {
+    const market = marketFilter;
+    if (market === "us" && data.hot_by_market?.us?.length) {
       return data.hot_by_market.us;
     }
-    if (marketFilter === "india" && data.hot_by_market?.india?.length) {
+    if (market === "india" && data.hot_by_market?.india?.length) {
       return data.hot_by_market.india;
     }
-    let pool = data.hot || [];
-    if (marketFilter !== "all") {
-      pool = pool.filter((r) => r.market === marketFilter);
+    // Fallback / improved per-market view:
+    // When the strict global "hot" list has few or no names for the chosen market
+    // (very common early in a scan batch or when global hot is small / US-heavy),
+    // collect the best available scored symbols for that market from:
+    // - the main hot list
+    // - symbolCache (previous ad-hoc analyzes / full scan injections)
+    // This makes the India (or US) tab useful instead of showing 0 even when
+    // India names have been scored (often at 30-50 range, below the global hot bar).
+    let pool = (data.hot || []).slice();
+    // pull from symbolCache too (these come from Analyze, Discover, Full Scan results, etc.)
+    if (symbolCache && symbolCache.size) {
+      for (const [sym, row] of symbolCache) {
+        if (row) pool.push(row);
+      }
     }
+    if (market !== "all") {
+      pool = pool.filter((r) => {
+        if (!r) return false;
+        const m = (r.market || "").toLowerCase();
+        if (m === market) return true;
+        // fallback heuristic for India (in case market field not set on some cached rows)
+        const sym = r.symbol || "";
+        if (market === "india" && sym.match(/\.(NS|BO)$/i)) return true;
+        return false;
+      });
+    }
+    // dedup + sort by score (best first)
+    const seen = new Set();
+    pool = pool.filter(r => {
+      const s = r.symbol;
+      if (!s || seen.has(s)) return false;
+      seen.add(s);
+      return true;
+    }).sort((a, b) => (b.score || b.buy_score || 0) - (a.score || a.buy_score || 0));
     return pool;
   }
 
@@ -459,7 +490,6 @@
       // Best effort server clear would require per-item, for simplicity just local clear + reload from server later
       renderWatch(lastData);
     }
-  });
   });
   alertBell?.addEventListener("click", () => {
     if ("Notification" in window && Notification.permission === "default") {
