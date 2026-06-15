@@ -211,8 +211,15 @@ class AppState:
                 for sym, new_titles in titles.items():
                     merged = (new_titles + self.news_titles_by_symbol.get(sym, []))[:40]
                     self.news_titles_by_symbol[sym] = merged
-            self.stats["last_news_scan"] = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(timezone.utc).isoformat()
+            result_count = len(items or [])
+            self.stats["last_news_scan"] = now
             self.stats["news_count"] = len(self.news)
+            self.stats["last_news_scan_result_count"] = result_count
+            self.stats["last_news_scan_symbol_count"] = len(counts or {})
+            self.stats["last_news_scan_empty"] = result_count == 0
+            if result_count == 0:
+                self.stats["last_empty_news_scan"] = now
             self.live_tick += 1
             self.stats["live_tick"] = self.live_tick
         self.broadcast_event.set()

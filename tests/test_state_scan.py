@@ -43,6 +43,24 @@ class AppStateScanTests(unittest.TestCase):
         self.assertIn("last_price_scan", state.stats)
         self.assertTrue(state.broadcast_event.is_set())
 
+    def test_update_news_tracks_result_and_symbol_observability(self):
+        state = make_state()
+        items = [
+            {"title": "ACME wins order", "symbols": ["ACME", "BETA"]},
+            {"title": "No ticker macro headline", "symbols": []},
+        ]
+        counts = {"ACME": 2, "BETA": 1}
+        titles = {"ACME": ["ACME wins order"], "BETA": ["BETA follows"]}
+
+        run_state_update(state, state.update_news(items, counts, titles))
+
+        self.assertEqual(state.stats["news_count"], 2)
+        self.assertEqual(state.stats["last_news_scan_result_count"], 2)
+        self.assertEqual(state.stats["last_news_scan_symbol_count"], 2)
+        self.assertIs(state.stats["last_news_scan_empty"], False)
+        self.assertIn("last_news_scan", state.stats)
+        self.assertTrue(state.broadcast_event.is_set())
+
     def test_hot_lists_rank_and_filter_by_buy_score(self):
         state = make_state()
         rows = [
