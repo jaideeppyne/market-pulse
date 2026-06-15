@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -30,6 +31,53 @@ class ScannerLoop:
         self._universe_flat: set[str] = set()
         self._news_counts: dict[str, int] = {}
         self._news_titles: dict[str, list[str]] = {}
+        self._symbol_failures: dict[str, int] = {}
+        self._symbol_quarantine_until: dict[str, float] = {}
+
+    def _eligible_pairs(self, pairs: list[tuple[str, str]]) -> tuple[list[tuple[str, str]], int]:
+        """Skip symbols that repeatedly produced no usable market data.
+
+        This is intentionally in-memory and conservative. On-demand analysis
+        still tries any ticker the user types; the quarantine only protects the
+        live scanner from hammering stale/delisted names every cycle.
+        """
+        now = time.time()
+        active: list[tuple[str, str]] = []
+        skipped = 0
+        for sym, market in pairs:
+            until = self._symbol_quarantine_until.get(sym, 0)
+            if until > now:
+                skipped += 1
+                continue
+            if until:
+                self._symbol_quarantine_until.pop(sym, None)
+                self._symbol_failures.pop(sym, None)
+            active.append((sym, market))
+        return active, skipped
+
+    def _record_symbol_health(self, requested: list[str], results: list[dict]) -> None:
+        if not requested:
+            return
+        returned = {str(r.get("symbol") or "").upper() for r in results}
+        returned.discard("")
+        for sym in returned:
+            self._symbol_failures.pop(sym, None)
+            self._symbol_quarantine_until.pop(sym, None)
+
+        # If a large whole batch returns nothing, treat it as provider/rate-limit
+        # risk and avoid quarantining valid symbols accidentally.
+        count_failures = bool(returned) or len(requested) <= 4
+        if not count_failures:
+            return
+
+        now = time.time()
+        for sym in requested:
+            if sym in returned:
+                continue
+            misses = self._symbol_failures.get(sym, 0) + 1
+            self._symbol_failures[sym] = misses
+            if misses >= 2:
+                self._symbol_quarantine_until[sym] = now + 6 * 3600
 
     def _all_symbols(self) -> list[tuple[str, str]]:
         pairs: list[tuple[str, str]] = []
@@ -75,7 +123,19 @@ class ScannerLoop:
 
         while self._running:
             try:
-                pairs = self._all_symbols()
+                # For LIVE hot movers (the recommendations in the UI tabs), limit to a small core of reliable, active, liquid tickers only.
+                # This prevents the scanner from wasting time on the thousands of delisted/invalid/junk tickers in the full BROADER + extra lists (which cause the yf "no data"/404 errors and result in empty hot lists).
+                # Full universe (with all the extra names) is still used for "Scan More / Discover" and "Full Exhaustive Scan".
+                # Core = NIFTY50 + SP500 core + a few good extras. Prioritize India.
+                core_us = list(dict.fromkeys(
+                    ["AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","AVGO","AMD","TSLA","JPM","V","MA","UNH","JNJ","PG","HD","CVX","MRK","ABBV","LLY","BAC","WMT","XOM","CRM","ORCL","ACN","MCD","CAT","IBM","GE","RTX","LMT","NOC","GD","DE","ETN","NOW","SNOW","ZS","NET","ANET","TSM","ASML","SOXX"] + 
+                    self.state.universe.get("us", [])[:50]
+                ))[:80]
+                core_india = list(dict.fromkeys(
+                    ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","BAJFINANCE.NS","HCLTECH.NS","WIPRO.NS","ULTRACEMCO.NS","SUNPHARMA.NS","NTPC.NS","POWERGRID.NS","ONGC.NS","NESTLEIND.NS","TATAMOTORS.NS","M&M.NS","ADANIENT.NS","ADANIPORTS.NS","JSWSTEEL.NS","TATASTEEL.NS","TECHM.NS","INDUSINDBK.NS","BAJAJFINSV.NS","HINDALCO.NS","COALINDIA.NS","GRASIM.NS","DIVISLAB.NS","CIPLA.NS","DRREDDY.NS","APOLLOHOSP.NS","EICHERMOT.NS","BPCL.NS","HEROMOTOCO.NS","BRITANNIA.NS","TRENT.NS","SHRIRAMFIN.NS","SBILIFE.NS","HDFCLIFE.NS","BEL.NS"] +
+                    self.state.universe.get("india", [])[:50]
+                ))[:80]
+                pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india]
                 async with self.state.lock:
                     events_by_symbol = {
                         sym: list(events)
@@ -89,6 +149,11 @@ class ScannerLoop:
                     market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "us")
                     pairs.append((sym, market))
                     seen_pairs.add(sym)
+                pairs, skipped_quarantined = self._eligible_pairs(pairs)
+                if skipped_quarantined:
+                    async with self.state.lock:
+                        self.state.stats["symbols_quarantined"] = skipped_quarantined
+
                 # Prioritize India chunks first in batching for better live coverage of India stocks
                 # (helps prevent India tab being stuck on just RELIANCE or few names while US dominates)
                 india_p = [p for p in pairs if p[1] == "india"]
@@ -127,6 +192,7 @@ class ScannerLoop:
                                 )
                                 batch_results.extend(res)
                                 all_results.extend(res)
+                                self._record_symbol_health(syms, res)
                             except Exception:
                                 logger.warning("Price batch error for %s market (skipped for resilience)", mkt)
                     # Live UI update after each batch (re-sort hot list immediately)
@@ -346,6 +412,15 @@ class ScannerLoop:
                 india_syms = self.state.universe.get("india", [])
                 if not india_syms:
                     continue
+                india_pairs, skipped_quarantined = self._eligible_pairs(
+                    [(sym, "india") for sym in india_syms]
+                )
+                if skipped_quarantined:
+                    async with self.state.lock:
+                        self.state.stats["symbols_quarantined"] = skipped_quarantined
+                india_syms = [sym for sym, _ in india_pairs]
+                if not india_syms:
+                    continue
                 # random sample each cycle to hit different India names over time (diversify beyond Reliance)
                 sample_size = min(chunk_size, len(india_syms))
                 chunk = random.sample(india_syms, sample_size)
@@ -365,6 +440,7 @@ class ScannerLoop:
                     news_titles,
                     events_by_symbol,
                 )
+                self._record_symbol_health(chunk, res)
                 if res:
                     await self.state.update_scan(
                         res, self.state.hot_score_threshold or 38, partial=True
