@@ -47,6 +47,8 @@
   const prevRankBySymbol = new Map();
   const DISPLAY_LIMIT = 200;
 
+  let lastRegime = null; // populated by light regime stub (VIX + trend) for pills + edge notes
+
   // New features state
   let watchlist = []; // [{symbol, addedAt, lastScore, lastBuy, addedScore}]
   let recentAlerts = []; // [{type, symbol, msg, ts, score}]
@@ -359,6 +361,15 @@
   function factorPill(row) {
     const { hit, total } = factorsDisplay(row);
     return `<button type="button" class="factor-pill" data-symbol="${attrEsc(row.symbol)}" title="View all factors">${hit}/${total}</button>`;
+  }
+
+  // Prominent confidence pills (wired in hot rows + detail). Color + always visible when present.
+  // Reuses the confidence_score populated by price_crawler (regular + full scans) + now promoted via /api/edge snapshots.
+  function confPill(c) {
+    if (c == null) return "";
+    const cls = c >= 80 ? "conf-high" : (c >= 60 ? "conf-med" : "conf-low");
+    const label = `Data confidence ${c} (crawler: info completeness, hist length, volume, news/earnings coverage, market)`;
+    return `<span class="conf-pill ${cls}" title="${attrEsc(label)}">${c}</span>`;
   }
 
   /* --- Tab navigation --- */
@@ -1673,15 +1684,6 @@
     const newsBurst = (data?.news || []).length;
 
     statsBar.innerHTML = `
-      <button type="button" class="stat-card clickable" data-stat="highconv" data-help="${attrEsc(UI_HELP.highconv)}" title="Click to filter hot list to high-conviction names only"><span class="label">High Conv (≥70)</span><span class="value">${highConv}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="whale" data-help="${attrEsc(UI_HELP.whale)}" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><span class="label">S+ Smart Money</span><span class="value" style="color:#f59e0b">${smCount}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.reset)}" title="Click to reset all filters and show hot list"><span class="label">Hot</span><span class="value">${s.hot_count || 0}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.tracked)}" title="Click to reset filters (show all tracked in hot)"><span class="label">Tracked</span><span class="value">${s.symbols_tracked || 0}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="news" data-help="${attrEsc(UI_HELP.news_hits)}" title="Click to view News tab"><span class="label">News hits</span><span class="value">${newsBurst}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="sectors" data-help="${attrEsc(UI_HELP.sectors)}" title="Go to Sectors tab"><span class="label">Sectors</span><span class="value">${s.sector_count || 0}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="earnings" data-help="${attrEsc(UI_HELP.earnings)}" title="Click to view Earnings tab"><span class="label">Earnings 7d</span><span class="value">${s.earnings_upcoming || 0}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.full_scan)}" title="Click to reset filters"><span class="label">Full scan</span><span class="value" style="font-size:0.72rem">${fullScan}</span></button>
-      <button type="button" class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.price_tick)}" title="Click to reset filters"><span class="label">Price tick</span><span class="value" style="font-size:0.72rem">${quickPx}</span></button>
     `;
     bindHelp(statsBar);
 
@@ -1707,6 +1709,10 @@
           document.querySelector('.tab[data-tab="news"]')?.click();
         } else if (st === "earnings") {
           document.querySelector('.tab[data-tab="earnings"]')?.click();
+        } else if (st === "edge") {
+          // Prominent entry to the Backtest Edge / Historical Performance section
+          document.querySelector('.tab[data-tab="guide"]')?.click();
+          loadEdgeStats();
         } else if (st === "reset") {
           earlyOnly = false;
           whaleOnly = false;
@@ -1789,7 +1795,6 @@
           investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
         }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${r.confidence_score != null ? `<span class="qual-pill" style="font-size:0.6rem;padding:1px 3px;background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence">${r.confidence_score}</span>` : ""}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
           <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
@@ -1920,7 +1925,7 @@
       <div class="detail-score-row">
         Buy <strong class="big-score clickable" data-act="factors" title="Click to see exactly which factors drove this buy score (weighted) and the full checklist">${m.buy_score ?? row.score}</strong>
         <span class="qual-pill clickable" data-act="factors" title="Quality score = broad checklist health (fundamentals + valuation + technicals). Click for breakdown">${m.quality_score ?? "—"}</span>
-        ${m.confidence_score != null ? `<span class="qual-pill" style="background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence: missing fundamentals/stale price/low volume/weak news/earnings source/market coverage">${m.confidence_score}</span>` : ""}
+        ${confPill(m.confidence_score)}
         ${m.is_extended ? '<span class="ext-badge">Extended — late chase</span>' : ""}
         <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}" title="Open the complete 100+ factor pass/fail with weights and tiers">${hit}/${total} factors</button>
       </div>
@@ -2492,6 +2497,124 @@
     // seed rules UI if panel open later
   }, 800);
 
+  // === Backtest Edge / Historical Performance + regime wiring ===
+  // Visible section via guide tab (new card + load button) + statsBar "📊 Backtest Edge" card.
+  // Shows: "If buy_score >70 historically returned X% avg in 7d (hit rate Y% over Z samples)" etc for all buckets/horizons,
+  // confidence breakdowns, max DD, and "Factor performance" mini table from snapshot payloads (reused from engine factor_breakdown).
+  async function loadEdgeStats() {
+    const container = document.getElementById("edgeResults");
+    if (!container) return;
+    container.innerHTML = `<p class="muted">Loading live backtest edge from snapshots + forward yf outcomes… (reuses /api/edge + recent_strong_snapshots_with_outcomes)</p>`;
+    try {
+      const res = await fetch("/api/edge?days=3&min_score=55");
+      const data = await res.json();
+      renderEdgePanel(data, container);
+      // also refresh regime pill if present
+      if (data.regime) {
+        lastRegime = data.regime;
+        if (lastData) renderStats(lastData); // refresh statsBar pills
+      }
+    } catch (e) {
+      container.innerHTML = `<p class="muted">Edge stats unavailable: ${escapeHtml(e.message || e)}</p>`;
+    }
+  }
+
+  function renderEdgePanel(edgeData, container) {
+    if (!edgeData || !edgeData.summary) {
+      container.innerHTML = `<p class="muted">No edge data yet (need recent snapshots with outcomes).</p>`;
+      return;
+    }
+    const sum = edgeData.summary || {};
+    const o = sum.overall || {};
+    const bkt = sum.bucket_stats_by_horizon || sum.bucket_stats || {};
+    const confB = sum.confidence_breakdown || {};
+    const factors = sum.top_factor_edge || [];
+    const mdd = sum.mdd_summary || {};
+    const reg = sum.regime || edgeData.regime || lastRegime || {};
+
+    let html = `<div class="edge-panel">`;
+    html += `<h4 style="margin:0.2rem 0">📊 Backtest Edge — Historical Performance (signals last ${sum.days||2}d, min score ${sum.min_score||55})</h4>`;
+    if (reg && reg.note) {
+      html += `<div style="background:#111827;padding:4px 8px;border-radius:4px;margin:4px 0;font-size:0.8rem"><strong>Regime:</strong> ${escapeHtml(reg.note)} <span class="muted">(VIX ${reg.vix||'—'} · ${reg.trend||''})</span></div>`;
+    }
+    // Key callout like task spec
+    const b70 = bkt["70+"] || {};
+    html += `<div style="font-weight:600;margin:0.3rem 0 0.5rem">If buy_score &gt;70 historically returned <strong>${b70["ret_7d"] ? b70["ret_7d"].avg_ret : (o["7d"]?o["7d"].avg_ret:'?')}%</strong> avg in 7d (hit rate <strong>${b70["ret_7d"] ? b70["ret_7d"].hit_rate : (o["7d"]?o["7d"].hit_rate:'?')}%</strong> over ${b70["ret_7d"]?b70["ret_7d"].n : (o["7d"]?o["7d"].n:sum.valid_with_outcomes||0)} samples)</div>`;
+
+    // Overall horizons table
+    html += `<table style="width:100%;font-size:0.78rem;margin:0.3rem 0;border-collapse:collapse"><thead><tr><th>Horizon</th><th>Samples</th><th>Hit rate</th><th>Avg ret %</th></tr></thead><tbody>`;
+    ["1d","3d","7d","14d"].forEach(h => {
+      const st = o[h] || {};
+      html += `<tr><td>${h}</td><td>${st.n||0}</td><td>${st.hit_rate||0}%</td><td>${st.avg_ret||0}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+
+    // Bucket stats (rich)
+    html += `<div style="margin-top:0.4rem"><strong>By buy_score bucket (multi-horizon + DD)</strong></div>`;
+    html += `<table style="width:100%;font-size:0.72rem;margin:0.2rem 0"><thead><tr><th>Bucket</th><th>N</th><th>1d hit/avg</th><th>7d hit/avg</th><th>14d hit/avg</th><th>avg maxDD</th></tr></thead><tbody>`;
+    Object.keys(bkt).forEach(b => {
+      const bs = bkt[b] || {};
+      const h1 = bs.ret_1d || {};
+      const h7 = bs.ret_7d || {};
+      const h14 = bs.ret_14d || {};
+      html += `<tr><td>${b}</td><td>${bs.n||0}</td><td>${h1.hit_rate||'-'}/${h1.avg_ret||'-'}</td><td>${h7.hit_rate||'-'}/${h7.avg_ret||'-'}</td><td>${h14.hit_rate||'-'}/${h14.avg_ret||'-'}</td><td>${bs.avg_max_dd_14d||mdd.avg_max_dd_14d||'-'}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+
+    // Confidence breakdowns
+    html += `<div style="margin-top:0.4rem"><strong>By confidence_score (from price_crawler heuristics)</strong></div>`;
+    html += `<table style="width:100%;font-size:0.72rem;margin:0.2rem 0"><thead><tr><th>Conf bucket</th><th>N</th><th>7d hit/avg</th><th>avg maxDD</th></tr></thead><tbody>`;
+    Object.keys(confB).forEach(cb => {
+      const c = confB[cb] || {};
+      html += `<tr><td>${cb}</td><td>${c.n||0}</td><td>${c.hit_7d||'-'}/${c.avg_ret7d||'-'}</td><td>${c.avg_max_dd||'-'}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+
+    // Factor performance mini table (optional per task)
+    if (factors.length) {
+      html += `<div style="margin-top:0.4rem"><strong>Factor performance (top passed factors by historical edge in these snapshots)</strong> <span class="muted" style="font-size:0.65rem">(reused factor_breakdown from engine snapshots)</span></div>`;
+      html += `<table style="width:100%;font-size:0.68rem;margin:0.2rem 0"><thead><tr><th>Factor</th><th>N</th><th>7d hit%</th><th>avg ret7d</th><th>avg DD</th></tr></thead><tbody>`;
+      factors.forEach(f => {
+        html += `<tr><td>${escapeHtml(f.factor)}</td><td>${f.n}</td><td>${f.hit_rate_7d}</td><td>${f.avg_ret_7d}</td><td>${f.avg_max_dd}</td></tr>`;
+      });
+      html += `</tbody></table>`;
+    }
+
+    html += `<div class="muted" style="font-size:0.65rem;margin-top:0.3rem">valid outcomes: ${sum.valid_with_outcomes||0} / ${sum.total_signals||0} signals · max DD avg: ${mdd.avg_max_dd_14d||'—'}% (over ${mdd.n||0}). Data from SQLite snapshots + yf forward at query time. Not advice.</div>`;
+    html += `</div>`;
+    container.innerHTML = html;
+  }
+
+  // Fetch regime on startup + periodically (light, for pills)
+  async function refreshRegime() {
+    try {
+      const r = await fetch("/api/regime");
+      if (r.ok) {
+        lastRegime = await r.json();
+        if (lastData) renderStats(lastData);
+      }
+    } catch (_) {}
+  }
+  refreshRegime();
+  setInterval(refreshRegime, 180000); // every 3min
+
+  // Wire the load button that will be in guide (added to index.html)
+  setTimeout(() => {
+    const btn = document.getElementById("loadEdgeBtn");
+    if (btn) btn.addEventListener("click", loadEdgeStats);
+    // also auto-hint load once in guide if user visits
+    const guideTab = document.querySelector('.tab[data-tab="guide"]');
+    if (guideTab) {
+      guideTab.addEventListener("click", () => {
+        const c = document.getElementById("edgeResults");
+        if (c && !c.dataset.loaded) {
+          c.dataset.loaded = "1";
+          setTimeout(() => { if (c.innerHTML.includes("Load live")) loadEdgeStats(); }, 400);
+        }
+      }, {once: true});
+    }
+  }, 1200);
+
   // Make all "boxes" (guide cards, etc.) clickable with useful actions
   document.querySelectorAll(".guide-card").forEach(card => {
     const h3 = card.querySelector("h3")?.textContent || "";
@@ -2511,6 +2634,9 @@
       } else if (h3.includes("Live updates") || h3.includes("Thesis")) {
         // no-op or scroll to top
         window.scrollTo({ top: 0, behavior: "smooth" });
+      } else if (h3.includes("Backtest") || h3.includes("Historical") || h3.includes("Edge")) {
+        const c = document.getElementById("edgeResults");
+        if (c) { document.querySelector('.tab[data-tab="guide"]')?.click(); loadEdgeStats(); }
       }
     });
   });
