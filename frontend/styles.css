@@ -848,6 +848,36 @@ body.modal-open { overflow: hidden; }
 .clickable:hover { text-decoration: underline; }
 .score-pill.clickable:hover, .qual-pill.clickable:hover { filter: brightness(1.15); }
 
+/* Prominent confidence pills (backtest+confidence task): color coded, visible in hot rows + detail */
+.conf-pill {
+  display: inline-block;
+  font-size: 0.62rem;
+  padding: 1px 5px;
+  margin-left: 3px;
+  border-radius: 4px;
+  font-weight: 700;
+  vertical-align: middle;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+.conf-pill.conf-high { background: rgba(16,185,129,0.22); color: #4ade80; }
+.conf-pill.conf-med { background: rgba(234,179,8,0.18); color: #fde047; }
+.conf-pill.conf-low { background: rgba(239,68,68,0.18); color: #f87171; }
+
+/* Regime pill in stats (light stub) */
+.regime-pill {
+  font-size: 0.7rem;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: rgba(103, 232, 249, 0.12);
+  color: #67e8f9;
+  font-weight: 600;
+}
+
+/* Edge panel tables (in-guide historical performance section) */
+.edge-panel table { border: 1px solid rgba(148,163,184,0.2); }
+.edge-panel th, .edge-panel td { padding: 2px 4px; text-align: center; border-bottom: 1px solid rgba(148,163,184,0.1); }
+.edge-panel td:first-child, .edge-panel th:first-child { text-align: left; }
+
 .stat-card.clickable { cursor: pointer; }
 .stat-card.clickable:hover { border-color: var(--accent); background: rgba(56,189,248,0.06); }
 

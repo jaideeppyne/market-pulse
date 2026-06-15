@@ -226,6 +226,12 @@
           <h3>8. Analyze is now conviction-first</h3>
           <p>Search + Analyze (or Enter) runs the exact same deep engine and immediately shows <strong>Positives</strong> (S+ whales, entry setups, catalysts, fundamentals) vs <strong>Negatives/Risks</strong> + a plain-English verdict (“Strong S+ early setup – favor on pullbacks”). Click scores, whale badges, charts, day% anywhere for details or full factors. Everything on screen is meant to be clicked or hovered.</p>
         </div>
+        <div class="guide-card">
+          <h3>9. Backtest Edge / Historical Performance</h3>
+          <p>Real backtesting from scan_snapshots + forward yf returns (1d/3d/7d/14d). Click <strong>📊 Backtest Edge</strong> in top stats bar (or button) to load rich hit rates by score bucket + confidence breakdowns (from price_crawler) + factor performance mini-table (reuses engine factor_breakdown in payloads). Also shows regime stub (VIX + trend).</p>
+          <button type="button" id="loadEdgeBtn" class="btn small" style="margin-top:4px">Load / Refresh live Edge stats</button>
+          <div id="edgeResults" style="margin-top:6px;font-size:0.82rem"></div>
+        </div>
       </div>
       <p class="muted">Not financial advice. Verify on NSE/BSE or SEC before trading.</p>
     </section>
