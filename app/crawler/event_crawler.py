@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import re
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -17,7 +18,8 @@ from app.universe import extract_tickers_from_text
 logger = logging.getLogger(__name__)
 
 SEC_HEADERS = {
-    "User-Agent": "MarketPulse/1.0 contact=local@marketpulse",
+    "User-Agent": os.getenv("MARKET_PULSE_SEC_USER_AGENT", "MarketPulse jaideeppyne@example.com"),
+    "Accept": "application/json, application/atom+xml, text/xml, text/html, */*",
     "Accept-Encoding": "gzip, deflate",
 }
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"

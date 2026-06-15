@@ -14,6 +14,33 @@ from app.db import insert_snapshot
 logger = logging.getLogger(__name__)
 
 
+def _normalize_history_frame(data: pd.DataFrame, sym: str) -> pd.DataFrame:
+    """Return a single-symbol OHLCV frame with flat yfinance columns."""
+    if data is None or data.empty:
+        return pd.DataFrame()
+    df = data.copy()
+    if isinstance(df.columns, pd.MultiIndex):
+        levels = [df.columns.get_level_values(i) for i in range(df.columns.nlevels)]
+        if sym in set(str(x) for x in levels[0]):
+            try:
+                df = df[sym]
+            except Exception:
+                df = pd.DataFrame()
+        elif sym in set(str(x) for x in levels[1]):
+            try:
+                df = df.xs(sym, axis=1, level=1)
+            except Exception:
+                df = pd.DataFrame()
+        elif "Close" in set(str(x) for x in levels[0]):
+            df.columns = df.columns.get_level_values(0)
+        elif "Close" in set(str(x) for x in levels[1]):
+            df.columns = df.columns.get_level_values(1)
+    if isinstance(df.columns, pd.MultiIndex):
+        return pd.DataFrame()
+    df.columns = [str(c) for c in df.columns]
+    return df.dropna(how="all")
+
+
 def _fetch_info_calendar(sym: str) -> tuple[dict, dict | None]:
     info: dict = {}
     calendar = None
@@ -56,7 +83,7 @@ def _fetch_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict
 
     if len(symbols) == 1:
         sym = symbols[0]
-        df = data.dropna()
+        df = _normalize_history_frame(data, sym).dropna()
         if not df.empty:
             info, calendar = _fetch_info_calendar(sym)
             out[sym] = (df, info, calendar)
@@ -64,9 +91,7 @@ def _fetch_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict
 
     for sym in symbols:
         try:
-            if sym not in data.columns.get_level_values(0):
-                continue
-            df = data[sym].dropna()
+            df = _normalize_history_frame(data, sym).dropna()
             if df.empty:
                 continue
             info, calendar = _fetch_info_calendar(sym)

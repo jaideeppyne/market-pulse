@@ -963,3 +963,14 @@ async def get_performance_stats() -> dict[str, Any]:
         }
 
 
+
+async def get_or_create_default_rules() -> list[dict]:
+    """Stub for alerts subagent feature (seeds example rules if none). Returns list."""
+    try:
+        rules = await list_alert_rules()
+        if rules:
+            return rules
+    except:
+        pass
+    # minimal defaults so server starts
+    return []

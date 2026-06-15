@@ -1821,8 +1821,6 @@
         if (activeTab === "watch") renderWatch(data);
       });
     });
-      });
-    });
     // New: score / day / rvol / spark clicks → factors or re-analyze
     hotBody.querySelectorAll("[data-act]").forEach(el => {
       el.addEventListener("click", (ev) => {
@@ -1982,7 +1980,6 @@
       renderDetail(row);
       renderWatch(lastData);
     });
-    });
 
     // thesis / watch actions (legacy thesis block)
     const thesisBlock = detailEl.querySelector(".thesis-block");
@@ -1990,7 +1987,6 @@
       if (isWatched) removeFromWatch(row.symbol); else addToWatch(row.symbol, row);
       renderDetail(row); // refresh
       renderWatch(lastData);
-    });
     });
     thesisBlock?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
 
@@ -2119,7 +2115,6 @@
         const sym = tr.dataset.symbol;
         if (e.target.dataset.act === "remove") {
           removeFromWatch(sym); return;
-        }
         }
         if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
           document.querySelector('.tab[data-tab="hot"]')?.click();
