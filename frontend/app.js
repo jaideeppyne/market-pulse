@@ -55,7 +55,7 @@
 
   const UI_HELP = {
     hot: "Top stocks that pass the current buy-score threshold. Ranked by next-entry quality, not just raw momentum.",
-    watch: "Your local watchlist. Add names from search, hot rows, earnings, or detail view and monitor score changes.",
+    watch: "Server-persisted My List (shared across devices/restarts). Rules for personalized alerts (score>65 + rvol>2, exact S+ investor etc) evaluated live. Use ★ Watch + Alert buttons.",
     radar: "Named high-signal investors, politicians, FIIs, promoters, and insider-style events detected from filings/news.",
     sectors: "Sector rotation view. Shows where early buy setups are clustering across US and India.",
     earnings: "Companies with upcoming results or strong earnings/news buzz in the next window.",
@@ -378,7 +378,12 @@
       }
       activeTab = tab;
       if (tab === "sectors") renderSectors(lastData);
-      if (tab === "watch") renderWatch(lastData);
+      if (tab === "watch") {
+        renderWatch(lastData);
+        // refresh rules list if the section is visible
+        const sec = document.getElementById("alertRulesSection");
+        if (sec && sec.style.display === "block") refreshAlertRulesUI();
+      }
       if (tab === "radar") renderRadar(lastData);
     });
   });
@@ -400,6 +405,14 @@
       document.querySelectorAll(".chip[data-market]").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       marketFilter = btn.dataset.market;
+      // Reset extra filters when explicitly choosing a market (All/US/India) so user sees the actual hot list for that market.
+      // Otherwise "India + Early only" or "India + Whale only" could easily result in empty results even when India names exist.
+      earlyOnly = false;
+      whaleOnly = false;
+      const eChip = document.getElementById("earlyOnlyChip");
+      if (eChip) { eChip.classList.remove("active"); eChip.dataset.early = "0"; }
+      const wChip = document.getElementById("whaleOnlyChip");
+      if (wChip) { wChip.classList.remove("active"); wChip.dataset.whale = "0"; }
       renderHot(lastData);
     });
   });
@@ -680,6 +693,11 @@
     if ((e.key.toLowerCase() === "w") && selectedSymbol) {
       const row = findRow(selectedSymbol, lastData);
       if (watchlist.some(ww => ww.symbol === selectedSymbol)) removeFromWatch(selectedSymbol); else addToWatch(selectedSymbol, row);
+      renderWatch(lastData);
+    }
+    if ((e.key.toLowerCase() === "a") && selectedSymbol) {
+      const row = findRow(selectedSymbol, lastData);
+      addToWatchWithAlert(selectedSymbol, row);
       renderWatch(lastData);
     }
     if (e.key.toLowerCase() === "f" && selectedSymbol) {
@@ -1749,9 +1767,16 @@
     const poolTotal = pool.length;
     hotCount.textContent = `Showing ${rows.length} of ${poolTotal} hot (${marketLabel}) · live sort`;
     if (hotHint) {
-      hotHint.textContent = sectorFilter
-        ? `Filtered to sector: ${sectorFilter}. Clear via badge above table.`
-        : "Ranking updates automatically during each scan batch. Stocks leave the list when score drops below threshold.";
+      if (rows.length === 0 && pool.length > 0) {
+        const activeExtras = [];
+        if (earlyOnly) activeExtras.push("Early buys only");
+        if (whaleOnly) activeExtras.push("Whale/Politician");
+        hotHint.textContent = `No ${marketLabel} names match the current filters (${activeExtras.join(" + ") || "search/sector"}). Click the active filter chip(s) above or the "Hot" stat card to clear.`;
+      } else if (sectorFilter) {
+        hotHint.textContent = `Filtered to sector: ${sectorFilter}. Clear via badge above table.`;
+      } else {
+        hotHint.textContent = "Ranking updates automatically during each scan batch. Stocks leave the list when score drops below threshold.";
+      }
     }
 
     // Prune rank map for symbols no longer in list
@@ -1786,7 +1811,7 @@
           investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
         }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${fullBadge}${whaleClickable}${investorLine}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
+          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${fullBadge}${whaleClickable}${investorLine}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from server My List">${watched}</button> <button class="tiny" data-watch-alert="${attrEsc(r.symbol)}" title="Add to My List + set personalized alert rule monitoring (server)">+A</button></td>
           <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${r.confidence_score != null ? `<span class="qual-pill" style="font-size:0.6rem;padding:1px 3px;background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence">${r.confidence_score}</span>` : ""}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
@@ -1799,7 +1824,7 @@
 
     hotBody.querySelectorAll("tr").forEach((tr) => {
       tr.addEventListener("click", (ev) => {
-        if (ev.target.closest(".factor-pill") || ev.target.closest(".tiny-watch") || ev.target.closest("[data-whale-sym]") || ev.target.closest("[data-act]")) return;
+        if (ev.target.closest(".factor-pill") || ev.target.closest(".tiny-watch") || ev.target.closest("[data-whale-sym]") || ev.target.closest("[data-act]") || ev.target.closest("[data-watch-alert]")) return;
         selectSymbol(tr.dataset.symbol, data);
       });
     });
@@ -1816,6 +1841,16 @@
         const row = findRow(sym, data);
         if (watchlist.some(w => w.symbol === sym)) removeFromWatch(sym);
         else addToWatch(sym, row || {symbol: sym});
+        renderHot(data);
+        if (activeTab === "watch") renderWatch(data);
+      });
+    });
+    hotBody.querySelectorAll("[data-watch-alert]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sym = btn.dataset.watchAlert;
+        const row = findRow(sym, data);
+        addToWatchWithAlert(sym, row || {symbol: sym});
         renderHot(data);
         if (activeTab === "watch") renderWatch(data);
       });
@@ -2081,7 +2116,7 @@
     const countEl = document.getElementById("watchCount");
     if (!tbody) return;
     if (!watchlist.length) {
-      tbody.innerHTML = `<tr><td colspan="6" class="muted">Your watchlist is empty. Use the search box to Analyze any ticker (even outside the hot list), then click ★ Watch in the detail panel, or the ☆/★ in Hot rows.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="muted">Your watchlist is empty (server + local fallback). Use the search box to Analyze any ticker, then click ★ Watch or ★ Watch + Alert in the detail panel, or the ☆ / +A in Hot rows. Server rules (e.g. buy_score&gt;65 AND rvol&gt;2) auto-add high-conviction names on match.</td></tr>`;
       if (countEl) countEl.textContent = "0 symbols";
       return;
     }
@@ -2103,14 +2138,16 @@
       const fh = row ? (row.factors_hit ?? m.factors_hit ?? "—") : "—";
       const ft = row ? (row.factors_total ?? m.factors_total ?? "—") : "—";
       const added = w.addedAt ? new Date(w.addedAt).toLocaleDateString() : "—";
+      const srvBadge = w.server || w.notes ? ` <span class="muted" style="font-size:0.65rem;color:#eab308" title="server persisted">srv</span>` : "";
       htmlParts.push(`<tr data-symbol="${attrEsc(w.symbol)}">
-        <td><strong>${w.symbol}</strong><br><span class="muted" style="font-size:0.7rem">added ${added} @ ${w.addedScore}</span></td>
+        <td><strong>${w.symbol}</strong>${srvBadge}<br><span class="muted" style="font-size:0.7rem">added ${added} @ ${w.addedScore}</span></td>
         <td><span class="score-pill">${buy}</span></td>
         <td><span class="qual-pill">${qual}</span></td>
         <td>${fh}/${ft}</td>
         <td><span class="muted" style="font-size:0.75rem">last ${w.lastScore || buy}</span></td>
         <td>
           <button class="tiny" data-act="analyze">Analyze</button>
+          <button class="tiny" data-act="watch-alert" title="Re-add with alert monitoring">+Alert</button>
           <button class="tiny danger" data-act="remove">Remove</button>
         </td>
       </tr>`);
@@ -2122,6 +2159,10 @@
         const sym = tr.dataset.symbol;
         if (e.target.dataset.act === "remove") {
           removeFromWatch(sym); return;
+        }
+        if (e.target.dataset.act === "watch-alert") {
+          const r = findRow(sym, data) || {symbol: sym};
+          addToWatchWithAlert(sym, r); return;
         }
         if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
           document.querySelector('.tab[data-tab="hot"]')?.click();
