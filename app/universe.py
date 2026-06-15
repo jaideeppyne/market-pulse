@@ -170,6 +170,32 @@ def _read_extra(path: Path) -> list[str]:
     return lines
 
 
+def _normalize_india_symbol(raw: str, default_suffix: str = ".NS") -> str | None:
+    """Normalize NSE/BSE table values into yfinance-ready Indian symbols.
+
+    Some scraped tables expose values as "NSE:ADANIENT" or "NSE ADANIENT". If
+    punctuation is stripped before the exchange prefix, those become invalid
+    tickers like "NSEADANIENT.NS" and slow every scan with avoidable 404s.
+    """
+    s = str(raw or "").strip().upper()
+    if not s or s in {"-", "NAN", "NONE", "NULL", "SYMBOL", "TICKER", "NSE", "BSE"}:
+        return None
+
+    s = re.sub(r"^(?:NSE|BSE)\s*[:/\-\s]\s*", "", s)
+
+    suffix = ""
+    if s.endswith((".NS", ".BO")):
+        suffix = s[-3:]
+        s = s[:-3]
+
+    s = re.sub(r"\s+", "", s)
+    s = re.sub(r"[^A-Z0-9&-]", "", s)
+    if not s or s in {"NSE", "BSE", "SYMBOL", "TICKER"} or len(s) < 2:
+        return None
+
+    return f"{s}{suffix or default_suffix}"
+
+
 def fetch_sp500_from_wikipedia() -> list[str]:
     """Try live Wikipedia list (requires lxml in env). Falls back to expanded static sample."""
     try:
@@ -227,8 +253,10 @@ def fetch_more_india_from_wikipedia() -> list[str]:
             for t in tables:
                 for col in t.columns:
                     if "Symbol" in str(col) or "Ticker" in str(col) or "NSE" in str(col):
-                        s = t[col].astype(str).str.upper().str.replace(r"[^A-Z0-9]", "", regex=True).tolist()
-                        syms.extend([x + ".NS" for x in s if len(x) >= 2])
+                        for raw in t[col].dropna().astype(str).tolist():
+                            sym = _normalize_india_symbol(raw)
+                            if sym:
+                                syms.append(sym)
                         break
         except Exception:
             continue
@@ -338,7 +366,10 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
                 "https://www1.nseindia.com/content/equities/EQUITY_L.csv",
                 usecols=["SYMBOL"]
             )
-            india.update([f"{s}.NS" for s in nse_df["SYMBOL"].dropna().astype(str).str.upper().tolist()])
+            for raw in nse_df["SYMBOL"].dropna().astype(str).tolist():
+                sym = _normalize_india_symbol(raw)
+                if sym:
+                    india.add(sym)
         except Exception:
             pass
         # BSE fallback via wiki scrape
@@ -349,18 +380,19 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
             )
             for t in bse_tables:
                 if "Symbol" in t.columns:
-                    bse_syms = t["Symbol"].astype(str).str.upper().tolist()
-                    india.update([f"{s}.BO" if not s.endswith((".NS", ".BO")) else s for s in bse_syms])
+                    for raw in t["Symbol"].dropna().astype(str).tolist():
+                        sym = _normalize_india_symbol(raw, default_suffix=".BO")
+                        if sym:
+                            india.add(sym)
         except Exception:
             pass
 
     # Normalize India symbols
     india_norm = set()
     for s in india:
-        s = s.upper()
-        if not s.endswith(".NS") and not s.endswith(".BO"):
-            s = f"{s}.NS"
-        india_norm.add(s)
+        sym = _normalize_india_symbol(s)
+        if sym:
+            india_norm.add(sym)
 
     return {
         "us": sorted(us),
