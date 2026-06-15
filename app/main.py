@@ -1180,6 +1180,24 @@ async def websocket_endpoint(ws: WebSocket):
         ws_clients.discard(ws)
 
 
+@app.get("/{full_path:path}")
+async def spa_fallback(full_path: str):
+    """Serve the React SPA shell for client-side routes (e.g. /watchlist, /sectors).
+
+    Registered last so explicit /api routes, the /static mount, and /ws all match
+    first. Real API misses still return JSON 404 rather than the HTML shell.
+    """
+    if full_path.startswith(("api/", "static/", "ws")):
+        raise HTTPException(status_code=404, detail="not found")
+    index_path = FRONTEND / "index.html"
+    if index_path.exists():
+        return FileResponse(
+            index_path,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+    return {"message": "Market Pulse API — frontend missing"}
+
+
 def run():
     import uvicorn
 

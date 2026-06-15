@@ -1,0 +1,91 @@
+import { useState } from 'react'
+import { useDispatch } from 'react-redux'
+import { selectSymbol } from '../store/uiSlice'
+import {
+  usePortfolioQuery, useJournalQuery, useAddPositionMutation,
+  useClosePositionMutation,
+} from '../store/api'
+
+export default function Portfolio() {
+  const dispatch = useDispatch()
+  const { data: pf } = usePortfolioQuery()
+  const { data: jr } = useJournalQuery()
+  const [addPosition] = useAddPositionMutation()
+  const [closePosition] = useClosePositionMutation()
+  const [form, setForm] = useState({ symbol: '', qty: 100, sl: '', target: '', notes: '' })
+
+  const positions = pf?.positions || []
+  const journal = jr?.journal || []
+  const summary = pf?.summary || {}
+
+  const submit = () => {
+    if (!form.symbol) return
+    addPosition({
+      symbol: form.symbol.toUpperCase(), qty: Number(form.qty) || 1,
+      entry_price: Number(form.entry_price) || undefined,
+      sl: form.sl ? Number(form.sl) : undefined,
+      target: form.target ? Number(form.target) : undefined,
+      notes: form.notes || undefined,
+    }).unwrap().then(() => setForm({ symbol: '', qty: 100, sl: '', target: '', notes: '' }))
+      .catch((e) => alert('Paper buy failed: ' + (e?.data?.detail || e?.error || 'error')))
+  }
+
+  return (
+    <section className="panel pad">
+      <h2 className="view-h">Portfolio <span className="view-h__sub">Paper Trading Journal (server-persisted)</span></h2>
+      <p className="panel-hint">Track paper buys with entry thesis. Live Buy/Qual &amp; est P&amp;L. Close records realized PnL + outcome.</p>
+
+      <div className="portfolio-summary">
+        <div className="stat-row"><span className="label">Open Positions</span><span className="value">{positions.length}</span></div>
+        <div className="stat-row"><span className="label">Est P&amp;L</span><span className={'value ' + ((summary.unrealized_pnl ?? 0) >= 0 ? 'pos' : 'neg')}>{summary.unrealized_pnl ?? 0}</span></div>
+        <div className="stat-row"><span className="label">Realized</span><span className={'value ' + ((summary.realized_pnl ?? 0) >= 0 ? 'pos' : 'neg')}>{summary.realized_pnl ?? 0}</span></div>
+      </div>
+
+      <h3 className="view-h3">Open paper positions</h3>
+      <div className="table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Symbol</th><th>Entry</th><th>Qty</th><th>Est P&amp;L</th><th>SL / Target</th><th>Notes</th><th>Actions</th></tr></thead>
+          <tbody>
+            {positions.length === 0 && <tr><td colSpan={7} className="muted">No open positions. Log a paper buy below or 📁 from the Hot Movers table.</td></tr>}
+            {positions.map((p) => (
+              <tr key={p.symbol} onClick={() => dispatch(selectSymbol(p.symbol))}>
+                <td className="symbol-cell">{p.symbol}</td>
+                <td>{p.entry_price}</td>
+                <td>{p.qty}</td>
+                <td className={(p.est_pnl ?? 0) >= 0 ? 'pos' : 'neg'}>{p.est_pnl ?? '—'}</td>
+                <td className="muted">{p.sl ?? '—'} / {p.target ?? '—'}</td>
+                <td className="muted">{p.notes || ''}</td>
+                <td><button className="btn-danger tiny" onClick={(e) => { e.stopPropagation(); closePosition({ symbol: p.symbol }) }}>Close</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="portfolio-form panel">
+        <h3 className="view-h3">Log new paper buy</h3>
+        <div className="port-form-row">
+          <input type="text" placeholder="SYMBOL" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} />
+          <input type="number" placeholder="Qty" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+          <input type="number" placeholder="SL $" value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} />
+          <input type="number" placeholder="Target $" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
+          <input type="text" placeholder="Notes / thesis" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <button className="btn-primary" onClick={submit}>📁 Log Paper Buy</button>
+        </div>
+        <p className="muted small-note">Entry price pulled from live state / analyze if omitted. One position per symbol.</p>
+      </div>
+
+      <h3 className="view-h3">Journal history</h3>
+      <div className="journal-list">
+        {journal.length === 0 && <div className="muted" style={{ padding: 8 }}>No journal entries yet.</div>}
+        {journal.map((j, i) => (
+          <div key={i} className="journal-row">
+            <strong>{j.symbol}</strong> <span className="muted">{j.action}</span> @ {j.price} × {j.qty}
+            {j.outcome_pnl != null && <span className={'realized ' + (j.outcome_pnl >= 0 ? 'pos' : 'neg')}> · PnL {j.outcome_pnl}</span>}
+            {j.notes && <span className="muted"> · {j.notes}</span>}
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
