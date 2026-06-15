@@ -1087,6 +1087,10 @@
           const r = findRow(sym, lastData);
           if (watchlist.some(w => w.symbol === sym)) removeFromWatch(sym); else addToWatch(sym, r || {symbol: sym});
           renderWatch(lastData);
+        } else if (act === "watch-alert") {
+          const r = findRow(sym, lastData);
+          addToWatchWithAlert(sym, r || {symbol: sym});
+          renderWatch(lastData);
         }
       };
     });
@@ -1976,12 +1980,22 @@
       renderDetail(row);
       renderWatch(lastData);
     });
+    extraBar?.querySelector('[data-act="watch-alert"]')?.addEventListener("click", (e) => {
+      addToWatchWithAlert(row.symbol, row);
+      renderDetail(row);
+      renderWatch(lastData);
+    });
 
     // thesis / watch actions (legacy thesis block)
     const thesisBlock = detailEl.querySelector(".thesis-block");
     thesisBlock?.querySelector('[data-act="watch"]')?.addEventListener("click", (e) => {
       if (isWatched) removeFromWatch(row.symbol); else addToWatch(row.symbol, row);
       renderDetail(row); // refresh
+      renderWatch(lastData);
+    });
+    thesisBlock?.querySelector('[data-act="watch-alert"]')?.addEventListener("click", (e) => {
+      addToWatchWithAlert(row.symbol, row);
+      renderDetail(row);
       renderWatch(lastData);
     });
     thesisBlock?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
@@ -2277,10 +2291,18 @@
   setInterval(pollSnapshot, 15000);
 
   // Initial empty renders for new panels (populated on first WS/snapshot)
-  setTimeout(() => {
+  setTimeout(async () => {
+    await loadServerWatches();
+    const initSrvAlerts = await fetchRecentServerAlerts();
+    initSrvAlerts.slice(0,10).forEach(sa => {
+      if (!recentAlerts.some(a=>a.symbol===sa.symbol && a.msg && a.msg.includes((sa.message||"").slice(0,20)))) {
+        recentAlerts.unshift({type:sa.rule_type||"server", symbol:sa.symbol, msg:sa.message, ts:sa.triggered_at, score:sa.buy_score, server:true});
+      }
+    });
     if (document.getElementById("panel-watch")) renderWatch(null);
     if (document.getElementById("radarList")) renderRadar(null);
     renderAlertBell();
+    // seed rules UI if panel open later
   }, 800);
 
   // Make all "boxes" (guide cards, etc.) clickable with useful actions
