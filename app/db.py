@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -85,6 +86,42 @@ async def init_db() -> None:
             CREATE INDEX IF NOT EXISTS idx_market_events_symbol ON market_events(symbol, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_market_events_type ON market_events(event_type, created_at DESC);
             CREATE INDEX IF NOT EXISTS idx_market_events_created ON market_events(created_at DESC);
+
+            -- Portfolio / Paper Trading Journal (server-persisted, survives refresh; one open paper position per symbol)
+            CREATE TABLE IF NOT EXISTS portfolio_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL UNIQUE,
+                market TEXT,
+                side TEXT DEFAULT 'long',
+                qty REAL NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_score REAL,
+                entry_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                sl REAL,
+                target REAL,
+                updated_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_portfolio_symbol ON portfolio_positions(symbol);
+
+            CREATE TABLE IF NOT EXISTS trade_journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                action TEXT NOT NULL,  -- 'buy' | 'close'
+                price REAL,
+                qty REAL,
+                score_at_time REAL,
+                notes TEXT,
+                outcome_pnl REAL,  -- realized P&L on close (positive = profit)
+                outcome_at TEXT,
+                linked_position_id INTEGER,
+                thesis_pos TEXT,   -- snapshot of positives at log/close for insight
+                thesis_neg TEXT,   -- snapshot of negatives/risks
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_journal_symbol ON trade_journal(symbol, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_journal_linked ON trade_journal(linked_position_id);
             """
         )
         await db.commit()
@@ -489,3 +526,168 @@ async def recent_strong_snapshots_with_outcomes(days: int = 2, min_score: float 
         except Exception as e:
             s["outcomes"] = {"error": str(e)[:100]}
     return snaps
+
+
+# ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS ============
+
+async def upsert_portfolio_position(
+    symbol: str,
+    market: str,
+    qty: float,
+    entry_price: float,
+    entry_score: float | None = None,
+    notes: str | None = None,
+    sl: float | None = None,
+    target: float | None = None,
+) -> int:
+    """Insert or replace open paper position (one per symbol). Returns position id."""
+    symbol = symbol.upper()
+    now = utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Delete any prior for this sym to enforce one open paper pos
+        await db.execute("DELETE FROM portfolio_positions WHERE symbol = ?", (symbol,))
+        cur = await db.execute(
+            """
+            INSERT INTO portfolio_positions
+                (symbol, market, side, qty, entry_price, entry_score, entry_at, notes, sl, target, updated_at)
+            VALUES (?, ?, 'long', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                symbol,
+                market or "us",
+                float(qty),
+                float(entry_price),
+                entry_score,
+                now,
+                notes,
+                sl,
+                target,
+                now,
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid or 0
+
+
+async def update_portfolio_position(
+    symbol: str,
+    notes: str | None = None,
+    sl: float | None = None,
+    target: float | None = None,
+) -> bool:
+    """Update notes / SL / target on an open position."""
+    symbol = symbol.upper()
+    now = utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            UPDATE portfolio_positions
+            SET notes = COALESCE(?, notes),
+                sl = COALESCE(?, sl),
+                target = COALESCE(?, target),
+                updated_at = ?
+            WHERE symbol = ?
+            """,
+            (notes, sl, target, now, symbol),
+        )
+        await db.commit()
+        return True
+
+
+async def list_portfolio() -> list[dict]:
+    """Return current open paper positions (for /api/portfolio)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM portfolio_positions ORDER BY updated_at DESC, created_at DESC"
+        )
+        rows = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            rows.append(d)
+        return rows
+
+
+async def delete_portfolio_position(symbol: str) -> bool:
+    """Remove a position (used on close)."""
+    symbol = symbol.upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM portfolio_positions WHERE symbol = ?", (symbol,))
+        await db.commit()
+        return True
+
+
+async def record_trade_journal(
+    symbol: str,
+    action: str,
+    price: float | None = None,
+    qty: float | None = None,
+    score_at_time: float | None = None,
+    notes: str | None = None,
+    outcome_pnl: float | None = None,
+    linked_position_id: int | None = None,
+    thesis_pos: str | None = None,
+    thesis_neg: str | None = None,
+) -> int:
+    """Log a buy or close action to journal. Returns journal id."""
+    symbol = symbol.upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            INSERT INTO trade_journal
+                (symbol, action, price, qty, score_at_time, notes, outcome_pnl, outcome_at, linked_position_id, thesis_pos, thesis_neg)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                symbol,
+                action,
+                price,
+                qty,
+                score_at_time,
+                notes,
+                outcome_pnl,
+                utc_now() if outcome_pnl is not None or action == "close" else None,
+                linked_position_id,
+                thesis_pos,
+                thesis_neg,
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid or 0
+
+
+async def list_journal(limit: int = 100) -> list[dict]:
+    """Return recent journal entries (newest first)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM trade_journal ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_performance_stats() -> dict[str, Any]:
+    """Compute winrate / total realized PnL from journal closes. Open PnL simulated in API layer using live state."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT outcome_pnl FROM trade_journal WHERE action = 'close' AND outcome_pnl IS NOT NULL"
+        )
+        pnls = [float(r[0]) for r in await cur.fetchall() if r[0] is not None]
+        closed = len(pnls)
+        wins = sum(1 for p in pnls if p > 0)
+        winrate = round((wins / closed * 100), 1) if closed else 0.0
+        total_pnl = round(sum(pnls), 2)
+        open_count = 0
+        cur2 = await db.execute("SELECT COUNT(*) FROM portfolio_positions")
+        open_count = (await cur2.fetchone())[0] or 0
+        return {
+            "closed_trades": closed,
+            "open_positions": open_count,
+            "winrate": winrate,
+            "total_realized_pnl": total_pnl,
+            "wins": wins,
+            "losses": closed - wins,
+        }

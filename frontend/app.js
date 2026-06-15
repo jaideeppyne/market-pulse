@@ -53,6 +53,10 @@
   let seenSmartMoney = new Set();
   let alertsEnabled = true;
 
+  // Portfolio / Paper Journal (server persisted)
+  let portfolioData = null; // {positions, stats, count}
+  let journalData = [];
+
   const UI_HELP = {
     hot: "Top stocks that pass the current buy-score threshold. Ranked by next-entry quality, not just raw momentum.",
     watch: "Your local watchlist. Add names from search, hot rows, earnings, or detail view and monitor score changes.",
@@ -61,6 +65,7 @@
     earnings: "Companies with upcoming results or strong earnings/news buzz in the next window.",
     news: "Latest RSS/Google News headlines matched to tracked symbols.",
     guide: "Short reference for the scanner workflow.",
+    portfolio: "Paper positions + journal. Server-stored (survives refresh). Log buys using live engine data; close records realized PnL + thesis snapshot (positives vs negatives).",
     highconv: "Count of hot-list names with buy score at or above 70. Click to focus on cleaner early setups.",
     whale: "Count of hot-list names with S+ smart-money style signals. Click to toggle whale/politician filtering.",
     reset: "Resets filters and returns the hot list to the default all-market view.",

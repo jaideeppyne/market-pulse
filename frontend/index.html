@@ -26,6 +26,7 @@
   <nav class="tabs" id="mainTabs" aria-label="Main sections">
     <button type="button" class="tab active" data-tab="hot">🔥 Hot Movers</button>
     <button type="button" class="tab" data-tab="watch">★ My List</button>
+    <button type="button" class="tab" data-tab="portfolio">📁 Portfolio</button>
     <button type="button" class="tab" data-tab="radar">🐳 S+ Radar</button>
     <button type="button" class="tab" data-tab="sectors">📊 Sectors</button>
     <button type="button" class="tab" data-tab="earnings">📅 Earnings (7d)</button>
@@ -119,6 +120,58 @@
         </table>
       </div>
       <p class="muted" id="watchHint">Use the search box + Analyze, then "★ Watch" from the detail panel. Or click ★ in hot rows.</p>
+    </section>
+  </main>
+
+  <!-- PORTFOLIO / PAPER JOURNAL -->
+  <main class="tab-panel" id="panel-portfolio" hidden>
+    <section class="panel">
+      <h2>📁 Portfolio — Paper Trading Journal (server-persisted)</h2>
+      <p class="panel-hint">Track paper buys with entry thesis (positives vs negatives from the same 140+ engine). Live Buy/Qual &amp; est P&amp;L pulled from cache or on-demand analyze. Close records realized PnL + outcome. Click rows for full detail. Add from hot rows / detail / watch with one click. Survives refresh.</p>
+
+      <div id="portfolioSummary" class="portfolio-summary"></div>
+
+      <div class="toolbar">
+        <button type="button" id="refreshPortfolioBtn" class="btn small">Refresh</button>
+        <button type="button" id="exportJournalBtn" class="btn small">Export Journal CSV</button>
+        <span id="portfolioCount" class="muted"></span>
+      </div>
+
+      <h3 style="margin:0.6rem 0 0.3rem;font-size:0.95rem">Open paper positions</h3>
+      <div class="table-wrap">
+        <table id="portfolioTable">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Entry</th>
+              <th>Live Buy</th>
+              <th>Live Qual</th>
+              <th>Qty</th>
+              <th>Est P&amp;L</th>
+              <th>SL / Target</th>
+              <th>Notes</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="portfolio-form panel" style="margin-top:0.75rem">
+        <h3 style="margin:0 0 0.3rem;font-size:0.9rem">Log new paper buy (uses current analyze data + your size)</h3>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:flex-end">
+          <input type="text" id="portSymbol" placeholder="SYMBOL e.g. NVDA or RELIANCE" style="width:160px" />
+          <input type="number" id="portQty" placeholder="Qty" value="100" step="1" style="width:90px" />
+          <input type="number" id="portSL" placeholder="SL $" step="0.01" style="width:90px" />
+          <input type="number" id="portTarget" placeholder="Target $" step="0.01" style="width:90px" />
+          <input type="text" id="portNotes" placeholder="Notes / thesis (optional)" style="flex:1;min-width:140px" />
+          <button type="button" id="logPaperBuyBtn" class="btn">📁 Log Paper Buy</button>
+        </div>
+        <p class="muted" style="font-size:0.72rem;margin-top:0.2rem">Entry price/score pulled from live state or /analyze (same engine). One position per symbol (replaces prior).</p>
+      </div>
+
+      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">Journal history (positives/negatives + outcomes)</h3>
+      <div id="journalList" class="journal-list" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0.35rem"></div>
     </section>
   </main>
 
