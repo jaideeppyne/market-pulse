@@ -53,6 +53,58 @@
   let seenSmartMoney = new Set();
   let alertsEnabled = true;
 
+  const UI_HELP = {
+    hot: "Top stocks that pass the current buy-score threshold. Ranked by next-entry quality, not just raw momentum.",
+    watch: "Your local watchlist. Add names from search, hot rows, earnings, or detail view and monitor score changes.",
+    radar: "Named high-signal investors, politicians, FIIs, promoters, and insider-style events detected from filings/news.",
+    sectors: "Sector rotation view. Shows where early buy setups are clustering across US and India.",
+    earnings: "Companies with upcoming results or strong earnings/news buzz in the next window.",
+    news: "Latest RSS/Google News headlines matched to tracked symbols.",
+    guide: "Short reference for the scanner workflow.",
+    highconv: "Count of hot-list names with buy score at or above 70. Click to focus on cleaner early setups.",
+    whale: "Count of hot-list names with S+ smart-money style signals. Click to toggle whale/politician filtering.",
+    reset: "Resets filters and returns the hot list to the default all-market view.",
+    tracked: "Number of symbols already processed in the current scan cycle. This grows while scanning batches.",
+    news_hits: "Number of recent headlines in the live news panel.",
+    full_scan: "Time of the last completed full factor scan.",
+    price_tick: "Time of the latest quick price-only refresh for hot names.",
+  };
+
+  let helpPopover = null;
+
+  function showHelpPopover(anchor, text) {
+    if (!anchor || !text) return;
+    hideHelpPopover();
+    const rect = anchor.getBoundingClientRect();
+    helpPopover = document.createElement("div");
+    helpPopover.className = "help-popover";
+    helpPopover.textContent = text;
+    document.body.appendChild(helpPopover);
+    const pop = helpPopover.getBoundingClientRect();
+    const left = Math.min(window.innerWidth - pop.width - 12, Math.max(12, rect.left));
+    const top = Math.min(window.innerHeight - pop.height - 12, rect.bottom + 8);
+    helpPopover.style.left = `${left}px`;
+    helpPopover.style.top = `${top}px`;
+  }
+
+  function hideHelpPopover() {
+    if (helpPopover) {
+      helpPopover.remove();
+      helpPopover = null;
+    }
+  }
+
+  function bindHelp(root = document) {
+    root.querySelectorAll("[data-help]").forEach((el) => {
+      if (el.dataset.helpBound === "1") return;
+      el.dataset.helpBound = "1";
+      el.addEventListener("mouseenter", () => showHelpPopover(el, el.dataset.help));
+      el.addEventListener("focus", () => showHelpPopover(el, el.dataset.help));
+      el.addEventListener("mouseleave", hideHelpPopover);
+      el.addEventListener("blur", hideHelpPopover);
+    });
+  }
+
   // Load persisted watchlist (local only)
   try {
     const saved = localStorage.getItem("marketpulse_watchlist");
@@ -173,6 +225,11 @@
 
   /* --- Tab navigation --- */
   document.querySelectorAll(".tab").forEach((btn) => {
+    const tab = btn.dataset.tab;
+    if (UI_HELP[tab]) {
+      btn.dataset.help = UI_HELP[tab];
+      btn.title = UI_HELP[tab];
+    }
     btn.addEventListener("click", () => {
       const tab = btn.dataset.tab;
       document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
@@ -214,6 +271,7 @@
   });
 
   document.getElementById("earlyOnlyChip")?.addEventListener("click", (btn) => {
+    btn = btn.currentTarget;
     earlyOnly = !earlyOnly;
     btn.classList.toggle("active", earlyOnly);
     btn.dataset.early = earlyOnly ? "1" : "0";
@@ -221,6 +279,7 @@
   });
 
   document.getElementById("whaleOnlyChip")?.addEventListener("click", (btn) => {
+    btn = btn.currentTarget;
     whaleOnly = !whaleOnly;
     btn.classList.toggle("active", whaleOnly);
     btn.dataset.whale = whaleOnly ? "1" : "0";
@@ -244,7 +303,7 @@
     }
   });
   alertBell?.addEventListener("click", () => {
-    if (Notification && Notification.permission === "default") {
+    if ("Notification" in window && Notification.permission === "default") {
       Notification.requestPermission().then(p => { if (p === "granted") alertsEnabled = true; });
     }
     showAlertsPanel();
@@ -1350,16 +1409,17 @@
     const newsBurst = (data?.news || []).length;
 
     statsBar.innerHTML = `
-      <div class="stat-card clickable" data-stat="highconv" title="Click to filter hot list to high-conviction names only"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
-      <div class="stat-card clickable" data-stat="whale" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
-      <div class="stat-card clickable" data-stat="reset" title="Click to reset all filters and show hot list"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
-      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters (show all tracked in hot)"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
-      <div class="stat-card clickable" data-stat="news" title="Click to view News tab"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
-      <div class="stat-card clickable" data-stat="sectors" title="Go to Sectors tab"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
-      <div class="stat-card clickable" data-stat="earnings" title="Click to view Earnings tab"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
-      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
-      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
+      <div class="stat-card clickable" data-stat="highconv" data-help="${attrEsc(UI_HELP.highconv)}" title="Click to filter hot list to high-conviction names only"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
+      <div class="stat-card clickable" data-stat="whale" data-help="${attrEsc(UI_HELP.whale)}" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
+      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.reset)}" title="Click to reset all filters and show hot list"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
+      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.tracked)}" title="Click to reset filters (show all tracked in hot)"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
+      <div class="stat-card clickable" data-stat="news" data-help="${attrEsc(UI_HELP.news_hits)}" title="Click to view News tab"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
+      <div class="stat-card clickable" data-stat="sectors" data-help="${attrEsc(UI_HELP.sectors)}" title="Go to Sectors tab"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
+      <div class="stat-card clickable" data-stat="earnings" data-help="${attrEsc(UI_HELP.earnings)}" title="Click to view Earnings tab"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
+      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.full_scan)}" title="Click to reset filters"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
+      <div class="stat-card clickable" data-stat="reset" data-help="${attrEsc(UI_HELP.price_tick)}" title="Click to reset filters"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
     `;
+    bindHelp(statsBar);
 
     // Quick filter actions from stats
     statsBar.querySelectorAll(".stat-card.clickable").forEach(card => {
