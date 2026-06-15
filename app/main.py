@@ -531,7 +531,7 @@ async def health():
     return {"status": "ok", "stats": stats}
 
 
-# ============ PORTFOLIO / PAPER TRADING JOURNAL ENDPOINTS (server persisted, first-class) ============
+# ============ PORTFOLIO / PAPER TRADING JOURNAL ENDPOINTS (server persisted, first-class) v1 ============
 
 @app.get("/api/portfolio")
 async def api_get_portfolio():

@@ -528,7 +528,7 @@ async def recent_strong_snapshots_with_outcomes(days: int = 2, min_score: float 
     return snaps
 
 
-# ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS ============
+# ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS (v1) ============
 
 async def upsert_portfolio_position(
     symbol: str,

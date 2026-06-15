@@ -852,3 +852,14 @@ body.modal-open { overflow: hidden; }
 .stat-card.clickable:hover { border-color: var(--accent); background: rgba(56,189,248,0.06); }
 
 .spark-large { cursor: pointer; }
+
+/* Portfolio / Paper Journal (delightful + consistent) */
+#panel-portfolio .portfolio-summary .stat-card { min-width: 92px; padding: 0.3rem 0.55rem; font-size: 0.82rem; }
+#panel-portfolio .portfolio-form { background: rgba(16,23,31,0.6); border:1px solid var(--border); border-radius:8px; padding:0.5rem; }
+#panel-portfolio table td input.port-notes { background: var(--bg); color: var(--text); border:1px solid var(--border); border-radius:3px; padding:1px 3px; }
+.journal-list .journal-row:hover { background: rgba(56,189,248,0.06); }
+.journal-list .journal-row strong { color: var(--accent); }
+#portfolioTable td { vertical-align: top; }
+#portfolioTable .pos { color: var(--green); }
+#portfolioTable .neg { color: var(--red); }
+.portfolio-summary { margin-bottom: 0.5rem; }
