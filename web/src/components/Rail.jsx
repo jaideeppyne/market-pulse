@@ -38,7 +38,7 @@ function Icon({ name }) {
 export default function Rail() {
   return (
     <nav className="rail" aria-label="Primary">
-      <NavLink to="/" end className="rail__logo" title="Pulse Terminal">
+      <NavLink to="/" end className="rail__logo" title="Market Pulse">
         <svg viewBox="0 0 24 24" fill="none" stroke="#06121f" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" width="20" height="20"><path d="M3 12h4l2.5 7 5-14L17 12h4" /></svg>
       </NavLink>
       <div className="rail__nav">

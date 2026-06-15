@@ -5,9 +5,9 @@ import IntelFeed from '../components/IntelFeed'
 import DetailPanel from '../components/DetailPanel'
 import { useLazyDiscoverQuery, useStartFullScanMutation } from '../store/api'
 import {
-  setMarketFilter, toggleEarly, toggleWhale, setSortBy, selectSymbol,
+  setMarketFilter, toggleEarly, toggleWhale, setSortBy, selectSymbol, setSearch,
 } from '../store/uiSlice'
-import { getHotPool, filterAndSort, DISPLAY_LIMIT } from '../lib/format'
+import { getHotPool, filterAndSort, DISPLAY_LIMIT, rankScore, hasSmartMoney } from '../lib/format'
 
 const SORTS = [
   ['score', 'Buy score'], ['quality', 'Quality score'], ['factors', 'Factors hit'],
@@ -33,6 +33,7 @@ export default function CommandCenter() {
   const dispatch = useDispatch()
   const ui = useSelector((s) => s.ui)
   const data = useSelector((s) => s.live.data)
+  const stats = data?.stats || {}
   const counts = useSelector((s) => {
     const d = s.live.data
     return { us: d?.hot_by_market?.us?.length || 0, india: d?.hot_by_market?.india?.length || 0 }
@@ -48,17 +49,44 @@ export default function CommandCenter() {
     const pool = getHotPool(data || {}, ui.marketFilter)
     exportCsv(filterAndSort(pool, ui).slice(0, DISPLAY_LIMIT))
   }
+  const pool = getHotPool(data || {}, ui.marketFilter)
+  const highConv = pool.filter((r) => rankScore(r) >= 70).length
+  const smartMoney = pool.filter(hasSmartMoney).length
+  const quickAnalyze = (sym) => {
+    dispatch(setSearch(sym))
+    dispatch(selectSymbol(sym))
+  }
 
   return (
     <>
+      <section className="command-brief">
+        <div className="brief-copy">
+          <div className="brief-kicker">GPT-style market workspace</div>
+          <h1>Scan the tape, then drill into the exact reason.</h1>
+          <p>Live US + India opportunities, S+ smart-money activity, earnings pressure, news bursts, and full factor explainability in one first screen.</p>
+          <div className="brief-actions">
+            <button className="btn-primary" onClick={onAnalyze} title="Analyze the symbol in the search box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 11-6.2-8.5" /><path d="M21 3v6h-6" /></svg>
+              Analyze typed ticker
+            </button>
+            {['MU', 'NVDA', 'RELIANCE', 'SBIN.NS'].map((sym) => (
+              <button key={sym} className="btn-ghost small quick-chip" onClick={() => quickAnalyze(sym)}>{sym}</button>
+            ))}
+          </div>
+        </div>
+        <div className="brief-metrics">
+          <div><span>Hot pool</span><strong>{pool.length}</strong></div>
+          <div><span>70+ conviction</span><strong>{highConv}</strong></div>
+          <div><span>S+ names</span><strong>{smartMoney}</strong></div>
+          <div><span>News hits</span><strong>{data?.news?.length || 0}</strong></div>
+          <div><span>Events</span><strong>{data?.events?.length || stats.market_events_count || 0}</strong></div>
+          <div><span>Last scan</span><strong>{(stats.last_price_scan || stats.last_price_tick || '—').slice(11, 19) || '—'}</strong></div>
+        </div>
+      </section>
       <StatCards />
       <div className="cc-layout">
         <div className="cc-main">
           <div className="toolbar">
-            <button className="btn-primary" onClick={onAnalyze} title="Analyze the symbol in the search box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 11-6.2-8.5" /><path d="M21 3v6h-6" /></svg>
-              Analyze
-            </button>
             <button className="btn-secondary small" onClick={() => triggerDiscover()} disabled={discoverState.isFetching} title="Aggressive multi-website discovery scan">
               {discoverState.isFetching ? '🔍 Discovering…' : '🔍 Scan More'}
             </button>
