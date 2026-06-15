@@ -190,11 +190,8 @@
       if (res.ok) {
         const j = await res.json();
         const srv = (j.watches || []).map(w => ({ symbol: w.symbol, addedAt: w.added_at, notes: w.notes, server: true }));
-        if (srv.length) {
-          // Merge: server authoritative, keep local-only extras as fallback
-          const srvSet = new Set(srv.map(s=>s.symbol));
-          watchlist = [...srv, ...watchlist.filter(w => !srvSet.has(w.symbol))];
-        }
+        // Once the server responds, make it authoritative so deleted server items do not linger locally.
+        watchlist = srv;
         serverWatchesLoaded = true;
       }
     } catch (e) {
@@ -340,7 +337,7 @@
       if (!s || seen.has(s)) return false;
       seen.add(s);
       return true;
-    }).sort((a, b) => (b.score || b.buy_score || 0) - (a.score || a.buy_score || 0));
+    }).sort((a, b) => rankScore(b) - rankScore(a));
     return pool;
   }
 
@@ -392,6 +389,11 @@
   function factorPill(row) {
     const { hit, total } = factorsDisplay(row);
     return `<button type="button" class="factor-pill" data-symbol="${attrEsc(row.symbol)}" title="View all factors">${hit}/${total}</button>`;
+  }
+
+  function rankScore(row) {
+    const m = row?.metrics || {};
+    return Number(row?.buy_score ?? m.buy_score ?? row?.score ?? 0) || 0;
   }
 
   // Prominent confidence pills (wired in hot rows + detail). Color + always visible when present.
@@ -483,12 +485,43 @@
     const rows = watchlist.map(w => ({symbol: w.symbol, buy_score: w.lastBuy, quality_score: w.lastQuality}));
     exportCSV(rows, "market_pulse_watchlist.csv");
   });
-  document.getElementById("clearWatchBtn")?.addEventListener("click", () => {
+  document.getElementById("clearWatchBtn")?.addEventListener("click", async () => {
     if (confirm("Clear your entire My List?")) {
+      const old = [...watchlist];
       watchlist = [];
       saveWatch();
-      // Best effort server clear would require per-item, for simplicity just local clear + reload from server later
+      await Promise.allSettled(old.map(w => removeFromServerWatch(w.symbol)));
       renderWatch(lastData);
+    }
+  });
+  document.getElementById("manageAlertRulesBtn")?.addEventListener("click", async () => {
+    const sec = document.getElementById("alertRulesSection");
+    if (sec) sec.style.display = "block";
+    await refreshAlertRulesUI();
+  });
+  document.getElementById("refreshServerWatchBtn")?.addEventListener("click", async () => {
+    await loadServerWatches();
+    await fetchRecentServerAlerts();
+    renderWatch(lastData);
+    renderAlertBell();
+  });
+  document.getElementById("refreshPortfolioBtn")?.addEventListener("click", () => renderPortfolio(true));
+  document.getElementById("exportJournalBtn")?.addEventListener("click", () => {
+    if (!journalData.length) { alert("No journal entries to export yet."); return; }
+    exportCSV(journalData, "market_pulse_journal.csv");
+  });
+  document.getElementById("logPaperBuyBtn")?.addEventListener("click", async () => {
+    const sym = (document.getElementById("portSymbol")?.value || selectedSymbol || "").trim().toUpperCase();
+    if (!sym) { alert("Enter a symbol first, e.g. NVDA or RELIANCE.NS."); return; }
+    const qty = parseFloat(document.getElementById("portQty")?.value || "100") || 100;
+    const sl = parseFloat(document.getElementById("portSL")?.value || "") || null;
+    const target = parseFloat(document.getElementById("portTarget")?.value || "") || null;
+    const notes = (document.getElementById("portNotes")?.value || "").trim();
+    try {
+      await addToPortfolio(sym, {qty, sl, target, notes});
+      await renderPortfolio(true);
+    } catch (err) {
+      alert("Paper buy failed: " + (err.message || err));
     }
   });
   alertBell?.addEventListener("click", () => {
@@ -1392,6 +1425,11 @@
   function copyThesis(symbol, row) {
     const md = buildMarkdownThesis(symbol, row);
     navigator.clipboard.writeText(md).then(() => {
+      document.querySelectorAll('[data-act="thesis"]').forEach(btn => {
+        const old = btn.textContent;
+        btn.textContent = "Copied ✓";
+        setTimeout(() => { btn.textContent = old; }, 1200);
+      });
       // non-blocking toast
       const t = document.createElement("span");
       t.textContent = " Thesis copied as Markdown ";
@@ -1408,7 +1446,7 @@
     return pool
       .map((r) => {
         const m = r.metrics || {};
-        return `${r.symbol}:${r.score}:${m.day_chg_pct}:${m.price}`;
+        return `${r.symbol}:${rankScore(r)}:${m.day_chg_pct}:${m.price}`;
       })
       .join("|");
   }
@@ -1661,7 +1699,7 @@
       if (sort === "rvol") {
         return (mb.rvol || 0) - (ma.rvol || 0);
       }
-      return (b.score || 0) - (a.score || 0);
+      return rankScore(b) - rankScore(a);
     });
     return list;
   }
@@ -1709,7 +1747,7 @@
     }
     // Compute live gauges from hot for conviction / S+
     const hotPool = getHotPool(data || {});
-    const highConv = hotPool.filter(r => (r.buy_score ?? r.score ?? 0) >= 70).length;
+    const highConv = hotPool.filter(r => rankScore(r) >= 70).length;
     const smCount = hotPool.filter(r => hasSmartMoneySignal(r)).length;
     const newsBurst = (data?.news || []).length;
 
@@ -1804,7 +1842,7 @@
         const day = m.day_chg_pct ?? 0;
         const cls = day >= 0 ? "pos" : "neg";
         const sel = r.symbol === selectedSymbol ? "selected" : "";
-        const flash = rowFlashClass(r.symbol, idx, r.score || 0);
+        const flash = rowFlashClass(r.symbol, idx, rankScore(r));
         const ext = m.is_extended
           ? '<span class="ext-badge" title="Near 52w high / extended — chase risk">EXT</span>'
           : "";
@@ -1825,6 +1863,12 @@
           investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
         }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
+          <td class="symbol-cell clickable" data-act="select" title="Select ${attrEsc(r.symbol)}">
+            <button class="tiny tiny-watch" data-watch="${attrEsc(r.symbol)}" title="${watched === "★" ? "Remove from My List" : "Add to My List"}">${watched}</button>
+            <strong>${escapeHtml(r.symbol)}</strong> ${ext}${discBadge}${fullBadge}${whaleClickable}${paperBtnHtml}
+            <br><span class="muted" style="font-size:0.72rem">${escapeHtml(m.name || m.sector || (r.market || "").toUpperCase() || "—")}</span>${investorLine}
+          </td>
+          <td><span class="score-pill clickable" data-act="factors" title="Buy score ranks the setup right now. Click for weighted factors.">${Math.round(Number(buy || 0) * 10) / 10}</span>${confPill(m.confidence_score)}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
           <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
@@ -1854,6 +1898,13 @@
         else addToWatch(sym, row || {symbol: sym});
         renderHot(data);
         if (activeTab === "watch") renderWatch(data);
+      });
+    });
+    hotBody.querySelectorAll("[data-paper]").forEach((btn) => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const sym = btn.dataset.paper;
+        addToPortfolio(sym, {qty: 100}).catch(err => alert("Paper buy failed: " + (err.message || err)));
       });
     });
     // New: score / day / rvol / spark clicks → factors or re-analyze
@@ -2024,6 +2075,9 @@
       renderWatch(lastData);
     });
     thesisBlock?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
+    thesisBlock?.querySelector('[data-act="paper"]')?.addEventListener("click", () => {
+      addToPortfolio(row.symbol, {qty: 100}).catch(err => alert("Paper buy failed: " + (err.message || err)));
+    });
 
     // live sizer calc
     const acct = detailEl.querySelector("#acctSize");
@@ -2150,6 +2204,16 @@
         const sym = tr.dataset.symbol;
         if (e.target.dataset.act === "remove") {
           removeFromWatch(sym); return;
+        }
+        if (e.target.dataset.act === "watch-alert") {
+          const row = findRow(sym, data) || {symbol: sym};
+          addToWatchWithAlert(sym, row);
+          renderWatch(data);
+          return;
+        }
+        if (e.target.dataset.act === "paper") {
+          addToPortfolio(sym, {qty: 100}).catch(err => alert("Paper buy failed: " + (err.message || err)));
+          return;
         }
         if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
           document.querySelector('.tab[data-tab="hot"]')?.click();
@@ -2329,13 +2393,15 @@
     };
     const res = await fetch("/api/portfolio", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(await res.text());
-    // auto switch + refresh for delight
+    const created = await res.json();
+    portfolioData = {positions: created.positions || [], stats: created.stats || {}, count: created.count || 0};
+    // auto switch + immediately render fresh server response so one-click paper buys never show stale portfolio state
     if (activeTab !== "portfolio") {
       document.querySelector('.tab[data-tab="portfolio"]')?.click();
-    } else {
-      await renderPortfolio(true);
     }
-    return res.json();
+    journalData = (await fetch("/api/journal?limit=60").then(r => r.ok ? r.json() : {journal: []}).catch(() => ({journal: []}))).journal || journalData;
+    await renderPortfolio(false);
+    return created;
   }
 
   async function closePosition(symbol) {

@@ -425,6 +425,20 @@ def extract_tickers_from_text(text: str, universe: set[str]) -> list[str]:
     }
     found: set[str] = set()
     up = text.upper()
+    ambiguous_plain_words = {
+        "A", "ALL", "ARE", "AS", "BE", "CAN", "FOR", "HAS", "IN", "IT", "NEW", "NOW", "ON", "OR", "SO", "TO", "US",
+        "FOCUS", "TECH", "WORTH", "ACE", "META",
+    }
+    explicit_tickers = set()
+    for m in re.finditer(r"(?:\$|\(|NASDAQ:|NYSE:|NSE:|BSE:)\s*([A-Z]{1,10}(?:\.(?:NS|BO))?)\b", up):
+        explicit_tickers.add(m.group(1))
+    company_aliases = {
+        "META PLATFORMS": "META",
+        "FACEBOOK PARENT": "META",
+    }
+    for alias, ticker in company_aliases.items():
+        if alias in up and ticker in universe:
+            found.add(ticker)
     # Alias first (exact for immediate name detection)
     for alias, ticker in ALIASES.items():
         if alias in up and ticker in universe:
@@ -436,6 +450,13 @@ def extract_tickers_from_text(text: str, universe: set[str]) -> list[str]:
             found.add(t)
     for sym in universe:
         base = sym.replace(".NS", "").replace(".BO", "")
-        if len(base) >= 3 and re.search(rf"\b{re.escape(base)}\b", up):
+        if len(base) < 3:
+            continue
+        if base in ambiguous_plain_words and base not in explicit_tickers:
+            continue
+        # Avoid the common phrase "stocks in focus" creating a fake FOCUS.NS signal.
+        if base == "FOCUS" and re.search(r"\b(STOCKS?|SHARES?|NAMES?)\s+IN\s+FOCUS\b", up):
+            continue
+        if re.search(rf"\b{re.escape(base)}\b", up):
             found.add(sym)
     return sorted(found)

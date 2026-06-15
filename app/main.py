@@ -26,6 +26,8 @@ from app.db import (
     init_db,
     insert_alert,
     list_alert_rules,
+    list_journal,
+    list_portfolio,
     list_watchlist,
     remove_from_watchlist,
     recent_alerts,
@@ -33,9 +35,14 @@ from app.db import (
     recent_news,
     recent_strong_snapshots,
     recent_strong_snapshots_with_outcomes,
+    record_trade_journal,
     snapshots_for_symbol,
     upcoming_earnings,
     update_alert_rule_last_triggered,
+    update_portfolio_position,
+    upsert_portfolio_position,
+    delete_portfolio_position,
+    get_performance_stats,
 )
 from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
@@ -514,6 +521,135 @@ async def api_recent_alerts(limit: int = 50):
     safe_limit = max(1, min(limit, 200))
     alerts = await recent_alerts(limit=safe_limit)
     return {"alerts": alerts, "count": len(alerts), "limit": safe_limit}
+
+
+def _as_positive_float(value, field: str, *, required: bool = False):
+    if value is None or value == "":
+        if required:
+            raise HTTPException(status_code=400, detail=f"{field} required")
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field} must be numeric")
+    if parsed <= 0:
+        raise HTTPException(status_code=400, detail=f"{field} must be > 0")
+    return parsed
+
+
+def _current_row_for_symbol(symbol: str) -> dict | None:
+    row = state.symbols.get(symbol)
+    if not row and symbol.endswith((".NS", ".BO")):
+        row = state.symbols.get(symbol.replace(".NS", "").replace(".BO", ""))
+    return row
+
+
+async def _portfolio_payload() -> dict:
+    positions = await list_portfolio()
+    stats = await get_performance_stats()
+    open_value = 0.0
+    open_pnl = 0.0
+    enriched = []
+    async with state.lock:
+        symbols_cache = dict(state.symbols)
+    for pos in positions:
+        p = dict(pos)
+        sym = p.get("symbol")
+        row = symbols_cache.get(sym) or {}
+        m = row.get("metrics") or {}
+        current_price = m.get("price") or p.get("entry_price")
+        qty = float(p.get("qty") or 0)
+        entry = float(p.get("entry_price") or 0)
+        if current_price is not None:
+            try:
+                cp = float(current_price)
+                est_pnl = round((cp - entry) * qty, 2)
+                p["current_price"] = cp
+                p["est_pnl"] = est_pnl
+                p["est_pnl_pct"] = round(((cp - entry) / entry * 100), 2) if entry else 0
+                open_value += cp * qty
+                open_pnl += est_pnl
+            except Exception:
+                pass
+        p["current_buy"] = m.get("buy_score") or row.get("buy_score") or row.get("score")
+        p["current_qual"] = m.get("quality_score") or row.get("quality_score")
+        enriched.append(p)
+    entry_value = round(sum(float(p.get("entry_price") or 0) * float(p.get("qty") or 0) for p in positions), 2)
+    stats.update({
+        "paper_equity_entry": entry_value,
+        "total_paper_value_est": round(open_value, 2) if open_value else entry_value,
+        "open_pnl_est": round(open_pnl, 2),
+    })
+    return {"positions": enriched, "stats": stats, "count": len(enriched)}
+
+
+@app.get("/api/portfolio")
+async def api_portfolio():
+    return await _portfolio_payload()
+
+
+@app.post("/api/portfolio")
+async def api_add_portfolio(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    symbol = _validate_symbol(str(payload.get("symbol") or ""))
+    qty = _as_positive_float(payload.get("qty"), "qty", required=True)
+    entry_price = _as_positive_float(payload.get("entry_price"), "entry_price", required=True)
+    entry_score = payload.get("entry_score")
+    if entry_score is not None and entry_score != "":
+        try:
+            entry_score = float(entry_score)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="entry_score must be numeric")
+    notes = str(payload.get("notes") or "")[:1000] or None
+    sl = _as_positive_float(payload.get("sl"), "sl")
+    target = _as_positive_float(payload.get("target"), "target")
+    market = str(payload.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "us"))
+    pos_id = await upsert_portfolio_position(symbol, market, qty, entry_price, entry_score, notes, sl, target)
+    await record_trade_journal(symbol, "buy", price=entry_price, qty=qty, score_at_time=entry_score, notes=notes, linked_position_id=pos_id)
+    return {"ok": True, "id": pos_id, **(await _portfolio_payload())}
+
+
+@app.get("/api/journal")
+async def api_journal(limit: int = 100):
+    safe_limit = max(1, min(limit, 500))
+    journal = await list_journal(limit=safe_limit)
+    return {"journal": journal, "count": len(journal), "limit": safe_limit}
+
+
+@app.post("/api/position/{symbol:path}/update")
+async def api_update_position(symbol: str, request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    notes = payload.get("notes")
+    notes = str(notes)[:1000] if notes is not None else None
+    sl = _as_positive_float(payload.get("sl"), "sl")
+    target = _as_positive_float(payload.get("target"), "target")
+    await update_portfolio_position(sym, notes=notes, sl=sl, target=target)
+    return {"ok": True, **(await _portfolio_payload())}
+
+
+@app.post("/api/position/{symbol:path}/close")
+async def api_close_position(symbol: str, request: Request, payload: dict = Body(default_factory=dict)):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    positions = await list_portfolio()
+    pos = next((p for p in positions if (p.get("symbol") or "").upper() == sym), None)
+    if not pos:
+        raise HTTPException(status_code=404, detail="position not found")
+    close_price = payload.get("price") or payload.get("close_price")
+    if close_price is not None and close_price != "":
+        close_price = _as_positive_float(close_price, "close_price", required=True)
+    else:
+        async with state.lock:
+            row = dict(state.symbols.get(sym) or {})
+        close_price = (row.get("metrics") or {}).get("price") or pos.get("entry_price")
+        close_price = float(close_price)
+    qty = float(pos.get("qty") or 0)
+    entry = float(pos.get("entry_price") or 0)
+    realized = round((close_price - entry) * qty, 2)
+    await record_trade_journal(sym, "close", price=close_price, qty=qty, outcome_pnl=realized, notes=str(payload.get("notes") or pos.get("notes") or "")[:1000], linked_position_id=pos.get("id"))
+    await delete_portfolio_position(sym)
+    return {"ok": True, "symbol": sym, "outcome_pnl": realized, **(await _portfolio_payload())}
 
 
 @app.get("/api/events")

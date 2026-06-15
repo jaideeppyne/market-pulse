@@ -306,6 +306,51 @@ class ApiP0Tests(unittest.TestCase):
 
         self.assertEqual(asyncio.run(count_rows()), 2)
 
+    def test_portfolio_routes_create_update_close_and_journal(self):
+        res = self.client.get("/api/portfolio")
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["positions"], [])
+
+        res = self.client.post(
+            "/api/portfolio",
+            json={"symbol": "AAPL", "qty": 10, "entry_price": 100, "entry_score": 70, "notes": "test"},
+        )
+        self.assertEqual(res.status_code, 200, res.text)
+        body = res.json()
+        self.assertIs(body["ok"], True)
+        self.assertEqual(body["count"], 1)
+        self.assertEqual(body["positions"][0]["symbol"], "AAPL")
+
+        res = self.client.post("/api/position/AAPL/update", json={"notes": "updated", "sl": 90, "target": 130})
+        self.assertEqual(res.status_code, 200, res.text)
+        pos = res.json()["positions"][0]
+        self.assertEqual(pos["notes"], "updated")
+        self.assertEqual(pos["sl"], 90)
+        self.assertEqual(pos["target"], 130)
+
+        res = self.client.get("/api/journal?limit=10")
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["journal"][0]["action"], "buy")
+
+        res = self.client.post("/api/position/AAPL/close", json={"price": 110})
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertEqual(res.json()["outcome_pnl"], 100)
+        self.assertEqual(res.json()["positions"], [])
+
+        res = self.client.get("/api/journal?limit=10")
+        self.assertEqual(res.status_code, 200, res.text)
+        actions = [j["action"] for j in res.json()["journal"]]
+        self.assertIn("buy", actions)
+        self.assertIn("close", actions)
+
+    def test_portfolio_rejects_invalid_inputs(self):
+        res = self.client.post("/api/portfolio", json={"symbol": "BAD SYMBOL", "qty": 1, "entry_price": 10})
+        self.assertEqual(res.status_code, 400, res.text)
+        res = self.client.post("/api/portfolio", json={"symbol": "AAPL", "qty": 0, "entry_price": 10})
+        self.assertEqual(res.status_code, 400, res.text)
+        res = self.client.post("/api/portfolio", json={"symbol": "AAPL", "qty": 1, "entry_price": 0})
+        self.assertEqual(res.status_code, 400, res.text)
+
 
 if __name__ == "__main__":
     unittest.main()
