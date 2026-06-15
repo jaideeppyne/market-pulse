@@ -426,6 +426,9 @@
         panel.classList.add("active");
       }
       activeTab = tab;
+      const titles = {hot:"Command Center", watch:"Watchlist", portfolio:"Portfolio", radar:"S+ Radar", sectors:"Sector Map", earnings:"Earnings", news:"Live News", guide:"Edge & Guide"};
+      const vt = document.getElementById("viewTitle");
+      if (vt && titles[tab]) vt.textContent = titles[tab];
       if (tab === "sectors") renderSectors(lastData);
       if (tab === "radar") renderRadar(lastData);
     });
@@ -950,20 +953,30 @@
     return escapeHtml(s);
   }
 
-  function sparklineSvg(values, w = 72, h = 26) {
+  let _sparkSeq = 0;
+  function sparklineSvg(values, w = 88, h = 30) {
     if (!values || values.length < 2) return "";
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min || 1;
-    const pts = values
-      .map((v, i) => {
-        const x = (i / (values.length - 1)) * w;
-        const y = h - ((v - min) / range) * h;
-        return `${x},${y}`;
-      })
-      .join(" ");
-    const color = values[values.length - 1] >= values[0] ? "#22c55e" : "#ef4444";
-    return `<svg class="spark" width="${w}" height="${h}"><polyline fill="none" stroke="${color}" stroke-width="1.5" points="${pts}"/></svg>`;
+    const pad = 2;
+    const coords = values.map((v, i) => {
+      const x = (i / (values.length - 1)) * w;
+      const y = pad + (h - pad * 2) - ((v - min) / range) * (h - pad * 2);
+      return [x, y];
+    });
+    const line = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+    const area = `M${coords[0][0].toFixed(1)},${h} L` + line.replace(/ /g, " L") + ` L${w},${h} Z`;
+    const color = values[values.length - 1] >= values[0] ? "#34D77F" : "#F08585";
+    const gid = `sg${_sparkSeq++}`;
+    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="${color}" stop-opacity="0.28"/>
+        <stop offset="1" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#${gid})"/>
+      <polyline fill="none" stroke="${color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" points="${line}"/>
+    </svg>`;
   }
 
   /* ========== NEW: Thesis, Alerts, Watch, Radar, Export helpers ========== */
@@ -1181,10 +1194,53 @@
   }
 
   function renderAlertBell() {
-    if (!alertCountEl || !alertBell) return;
-    const n = recentAlerts.length;
-    alertCountEl.textContent = n > 9 ? "9+" : n;
-    alertBell.classList.toggle("has-alerts", n > 0);
+    if (alertCountEl && alertBell) {
+      const n = recentAlerts.length;
+      alertCountEl.textContent = n > 9 ? "9+" : n;
+      alertBell.classList.toggle("has-alerts", n > 0);
+    }
+    renderIntelFeed();
+  }
+
+  function timeAgo(ts) {
+    if (!ts) return "";
+    const t = new Date(ts).getTime();
+    if (!t) return "";
+    const diff = Math.max(0, (new Date().getTime() - t) / 1000);
+    if (diff < 60) return `${Math.round(diff)}s`;
+    if (diff < 3600) return `${Math.round(diff / 60)}m`;
+    if (diff < 86400) return `${Math.round(diff / 3600)}h`;
+    return `${Math.round(diff / 86400)}d`;
+  }
+
+  const FEED_STYLE = {
+    high_score: {accent: "#34D77F", iconbg: "rgba(34,197,94,.14)", icon: "📈"},
+    smart_money: {accent: "#FACC15", iconbg: "rgba(250,204,21,.14)", icon: "💎"},
+    pre_earnings: {accent: "#B49BF5", iconbg: "rgba(139,92,246,.14)", icon: "📅"},
+    risk: {accent: "#F08585", iconbg: "rgba(239,68,68,.14)", icon: "⚠"},
+    news: {accent: "#7DB4F7", iconbg: "rgba(96,165,250,.14)", icon: "📰"},
+  };
+  function renderIntelFeed() {
+    const feed = document.getElementById("intelFeed");
+    if (!feed) return;
+    feed.innerHTML = recentAlerts.slice(0, 14).map(a => {
+      const st = FEED_STYLE[a.type] || {accent: "#38BDF8", iconbg: "rgba(56,189,248,.14)", icon: "⚡"};
+      const sym = a.symbol ? `<span class="fa-sym">${escapeHtml(a.symbol)}</span>` : "";
+      return `<div class="feed-alert clickable" data-sym="${attrEsc(a.symbol || "")}" style="--accent:${st.accent};--iconbg:${st.iconbg}">
+        <span class="fa-icon">${st.icon}</span>
+        <span class="fa-main">
+          <span class="fa-title">${escapeHtml((a.msg || a.type || "Signal").split(" — ")[0].slice(0, 40))}${sym}</span>
+          <span class="fa-text">${escapeHtml(a.msg || "")}</span>
+        </span>
+        <span class="fa-time">${timeAgo(a.ts)}</span>
+      </div>`;
+    }).join("");
+    feed.querySelectorAll(".feed-alert[data-sym]").forEach(el => {
+      el.addEventListener("click", () => {
+        const sym = el.dataset.sym;
+        if (sym) selectSymbol(sym, lastData);
+      });
+    });
   }
 
   async function refreshAlertRulesUI() {
@@ -1750,9 +1806,40 @@
     const highConv = hotPool.filter(r => rankScore(r) >= 70).length;
     const smCount = hotPool.filter(r => hasSmartMoneySignal(r)).length;
     const newsBurst = (data?.news || []).length;
+    const earningsCnt = (data?.earnings || []).length;
+    const scanSecs = (() => {
+      const t = s.last_price_scan || s.last_price_tick;
+      return t ? t.slice(11, 19) : "—";
+    })();
+    const health = (() => {
+      const got = Number(s.last_full_price_scan_result_count ?? s.last_price_batch_result_count ?? 0);
+      const tried = Number(s.last_full_price_scan_attempted ?? s.last_price_batch_attempted ?? 0);
+      if (tried > 0) return `${Math.round((got / tried) * 1000) / 10}%`;
+      return s.symbols_tracked ? `${s.symbols_tracked}` : "—";
+    })();
+    // Update topbar scan pill
+    const scanPillVal = document.getElementById("scanPillValue");
+    if (scanPillVal) scanPillVal.textContent = scanning ? "live" : scanSecs;
 
-    statsBar.innerHTML = `
-    `;
+    const statCard = (stat, label, value, sub, subColor, accent, iconBg, iconPath) => `
+      <div class="stat-card clickable" data-stat="${stat}" title="Click to filter / open">
+        <span class="accent" style="background:${accent}"></span>
+        <div class="stat-head">
+          <span class="label">${label}</span>
+          <span class="stat-icon" style="background:${iconBg};color:${accent}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="${iconPath}"/></svg>
+          </span>
+        </div>
+        <div class="value">${value}</div>
+        <div class="sub" style="color:${subColor}">${sub}</div>
+      </div>`;
+
+    statsBar.innerHTML =
+      statCard("reset", "Hot Movers", hotPool.length, `${highConv} high-conviction`, "#34D77F", "#38BDF8", "rgba(56,189,248,.12)", "M3 17l6-6 4 4 8-8M21 7v6") +
+      statCard("whale", "S+ / Smart Money", smCount, "named investor signals", "#E5C158", "#FACC15", "rgba(250,204,21,.12)", "M3 7l4 12h10l4-12-5 4-4-7-4 7z") +
+      statCard("news", "News Activity", newsBurst, "headlines tracked", "#7DB4F7", "#60A5FA", "rgba(96,165,250,.12)", "M4 5h16v14H4zM8 9h8M8 13h5") +
+      statCard("earnings", "Earnings", earningsCnt, "reporting soon", "#B49BF5", "#8B5CF6", "rgba(139,92,246,.12)", "M3 4h18v17H3zM3 9h18M8 2v4M16 2v4") +
+      statCard("edge", "Scan Health", health, scanning ? `scanning ${s.scan_batch || "?"}/${s.scan_batches_total || "?"}` : "live coverage", "#E8B873", "#22C55E", "rgba(34,197,94,.12)", "M3 12h4l2.5 7 5-14L17 12h4");
     bindHelp(statsBar);
 
     // Quick filter actions from stats
@@ -1839,41 +1926,76 @@
     hotBody.innerHTML = rows
       .map((r, idx) => {
         const m = r.metrics || {};
-        const day = m.day_chg_pct ?? 0;
-        const cls = day >= 0 ? "pos" : "neg";
+        const day = Number(m.day_chg_pct ?? 0);
+        const dayCls = day >= 0 ? "pos" : "neg";
         const sel = r.symbol === selectedSymbol ? "selected" : "";
         const flash = rowFlashClass(r.symbol, idx, rankScore(r));
-        const ext = m.is_extended
-          ? '<span class="ext-badge" title="Near 52w high / extended — chase risk">EXT</span>'
-          : "";
-        const buy = m.buy_score ?? r.score;
+        const buy = Number(m.buy_score ?? r.score ?? 0);
         const qual = m.quality_score ?? "—";
-        const whale = smartMoneyBadges(r);
+        const sym = String(r.symbol || "");
+        const isIndia = (r.market || m.market || "").toLowerCase() === "india" || /\.(NS|BO)$/i.test(sym);
+        const mkt = isIndia ? "in" : "us";
+        const cur = isIndia ? "₹" : "$";
+        const price = m.price != null ? `${cur}${m.price}` : "";
         const watched = watchlist.some(w => w.symbol === r.symbol) ? "★" : "☆";
-        const whaleClickable = whale ? ` <span class="whale-badge clickable" data-whale-sym="${attrEsc(r.symbol)}" title="Click for who / headline / why S+ 6.5× boost">${whale.replace(/<[^>]+>/g,'')}</span>` : "";
-        const discBadge = r.discovered ? `<span class="ext-badge" style="background:rgba(168,85,247,0.25);color:#c084fc;border-color:#c084fc" title="From multi-website + large pool discovery scan (not regular hot)">DISC</span>` : "";
-        const fullBadge = r.full_exhaustive ? `<span class="ext-badge" style="background:#059669;color:white;border-color:#059669" title="From FULL EXHAUSTIVE scan across ALL India + US stocks (max data, full accuracy, no stone unturned)">FULL</span>` : "";
-        const paperBtnHtml = ` <button class="tiny" data-paper="${attrEsc(r.symbol)}" title="One-click paper buy into Portfolio (records entry + engine thesis positives/negatives)">📁</button>`;
-        // Super heavy smart money display: exact name + quality immediately if present
-        let investorLine = "";
-        const sm = r.metrics && r.metrics.smart_money;
-        if (sm && sm.hits && sm.hits.length) {
-          const hit = sm.hits[0];
-          const q = hit.quality ? ` (${hit.quality})` : "";
-          investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
+
+        // --- Buy score tier ---
+        const tier = buy >= 90 ? ["buy-sp", "S+"] : buy >= 80 ? ["buy-a", "A"]
+          : buy >= 70 ? ["buy-b", "B"] : buy >= 55 ? ["buy-c", "C"] : ["buy-d", "D"];
+
+        // --- Catalyst badges ---
+        const sm = m.smart_money;
+        const cats = [];
+        if (sm?.hits?.length || smartMoneyBadges(r)) {
+          const sTier = (sm?.hits?.[0]?.tier || "").toUpperCase();
+          if (sTier.includes("S") || buy >= 90) cats.push('<span class="cat-badge sp clickable" data-whale-sym="' + attrEsc(sym) + '">S+</span>');
+          else cats.push('<span class="cat-badge sm clickable" data-whale-sym="' + attrEsc(sym) + '">Smart Money</span>');
         }
-        return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td class="symbol-cell clickable" data-act="select" title="Select ${attrEsc(r.symbol)}">
-            <button class="tiny tiny-watch" data-watch="${attrEsc(r.symbol)}" title="${watched === "★" ? "Remove from My List" : "Add to My List"}">${watched}</button>
-            <strong>${escapeHtml(r.symbol)}</strong> ${ext}${discBadge}${fullBadge}${whaleClickable}${paperBtnHtml}
-            <br><span class="muted" style="font-size:0.72rem">${escapeHtml(m.name || m.sector || (r.market || "").toUpperCase() || "—")}</span>${investorLine}
+        if ((r.news && r.news.length) || m.news_count || (r.alerts || []).some(a => /news|headline/i.test(a)))
+          cats.push('<span class="cat-badge news">News</span>');
+        if (r.earnings || m.earnings_pre || r.earnings_soon || m.days_until_earnings != null)
+          cats.push('<span class="cat-badge earn">Earnings</span>');
+        if (m.is_extended) cats.push('<span class="cat-badge risk" title="Near 52w high / extended">Extended</span>');
+        if (r.discovered) cats.push('<span class="cat-badge sm" title="From discovery scan">DISC</span>');
+        if (r.full_exhaustive) cats.push('<span class="cat-badge news" title="From full exhaustive scan">FULL</span>');
+        cats.push(factorPill(r));
+        const reason = escapeHtml(sm?.primary_alert || (r.alerts || [])[0] || m.sector || m.name || "");
+
+        // --- Rel vol ---
+        const rvol = m.rvol;
+        const rvCls = rvol >= 2.5 ? "hi" : rvol >= 1.5 ? "mid" : "lo";
+
+        // --- Confidence ---
+        const c = m.confidence_score;
+        const confHtml = c == null ? '<span class="muted">—</span>'
+          : `<span class="conf ${c >= 80 ? "hi" : c >= 65 ? "mid" : "lo"}">${c}</span>`;
+
+        return `<tr class="${sel} ${flash}" data-symbol="${attrEsc(sym)}">
+          <td class="col-sym">
+            <div class="sym">
+              <span class="mkt ${mkt}">${mkt.toUpperCase()}</span>
+              <button class="tiny tiny-watch" data-watch="${attrEsc(sym)}" title="${watched === "★" ? "Remove from My List" : "Add to My List"}">${watched}</button>
+              <button class="tiny" data-paper="${attrEsc(sym)}" title="One-click paper buy into Portfolio">📁</button>
+              <span class="sym-main">
+                <span class="sym__ticker">${escapeHtml(sym)}</span><span class="sym__price ${dayCls}">${price}</span>
+                <br><span class="sym__name">${escapeHtml(m.name || m.sector || mkt.toUpperCase())}</span>
+              </span>
+            </div>
           </td>
-          <td><span class="score-pill clickable" data-act="factors" title="Buy score ranks the setup right now. Click for weighted factors.">${Math.round(Number(buy || 0) * 10) / 10}</span>${confPill(m.confidence_score)}</td>
-          <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
-          <td class="factor-cell">${factorPill(r)}</td>
-          <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
-          <td class="clickable" data-act="factors" title="Relative volume (today vs 10d avg). ≥1.6-2.5× surges are strong volume factors in the engine.">${m.rvol ?? "—"}x</td>
-          <td class="clickable" data-act="reanalyze" title="Click chart to re-run full engine on latest prices/news">${sparklineSvg(r.sparkline)}</td>
+          <td class="col-trend">${sparklineSvg(r.sparkline, 88, 30)}</td>
+          <td class="col-cats">
+            <div class="cats__badges">${cats.join("")}</div>
+            ${reason ? `<div class="cats__reason">${reason}</div>` : ""}
+          </td>
+          <td class="col-rvol"><span class="rvol ${rvCls}">${rvol != null ? rvol + "×" : "—"}</span></td>
+          <td class="col-conf">${confHtml}</td>
+          <td class="col-day"><span class="day ${dayCls}">${day > 0 ? "▲ +" : day < 0 ? "▼ " : ""}${day}%</span></td>
+          <td class="col-buy">
+            <div class="buy ${tier[0]} clickable" data-act="factors" title="Buy score — click for weighted factor breakdown">
+              <span class="buy__meta"><span class="buy__tier">${tier[1]}</span><div class="buy__q">Q ${qual}</div></span>
+              <span class="buy__pill"><span>${Math.round(buy)}</span></span>
+            </div>
+          </td>
         </tr>`;
       })
       .join("");
@@ -2442,12 +2564,12 @@
     ws.onopen = () => {
       wsConnected = true;
       connStatus.textContent = "● Live";
-      connStatus.className = "status live";
+      connStatus.className = "pill status-pill live";
     };
     ws.onclose = () => {
       wsConnected = false;
       connStatus.textContent = "Reconnecting…";
-      connStatus.className = "status down";
+      connStatus.className = "pill status-pill down";
       setTimeout(connect, 2000);
     };
     ws.onmessage = (ev) => {
@@ -2528,7 +2650,7 @@
       renderHot(data);
       if (connStatus) {
         connStatus.textContent = "● Rankings updated";
-        connStatus.className = "status live";
+        connStatus.className = "pill status-pill live";
         setTimeout(() => {
           if (connStatus && wsConnected) {
             connStatus.textContent = "● Live";

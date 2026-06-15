@@ -3,324 +3,353 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Market Pulse</title>
-      <link rel="stylesheet" href="/static/styles.css?v=11" />
+  <title>Pulse Terminal — Market Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css?v=20" />
   <link rel="manifest" href="/static/manifest.json" />
-  <meta name="theme-color" content="#0b0f14" />
+  <meta name="theme-color" content="#070A12" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <h1>Market Pulse</h1>
-      <span class="sub" id="factorCountLabel">US + India · 100+ factors · next-buy rank</span>
+  <div class="bg-glow-cyan"></div>
+  <div class="bg-glow-violet"></div>
+
+  <div class="app">
+    <!-- ===== LEFT ICON RAIL ===== -->
+    <nav class="rail" aria-label="Primary">
+      <a class="rail__logo" href="/" title="Pulse Terminal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#06121f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M3 12h4l2.5 7 5-14L17 12h4"/></svg>
+      </a>
+      <div class="rail__nav" id="mainTabs">
+        <button type="button" class="tab rail__btn active" data-tab="hot" title="Command Center / Hot Movers" aria-label="Command Center">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="watch" title="My List / Watchlist" aria-label="Watchlist">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.3 6.9 19l1-5.8L3.7 9.1l5.8-.8z"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="portfolio" title="Portfolio / Paper Journal" aria-label="Portfolio">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 8h18v12H3zM8 8V6a2 2 0 012-2h4a2 2 0 012 2v2M3 13h18"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="radar" title="S+ Radar — smart money" aria-label="S+ Radar">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="sectors" title="Sector map" aria-label="Sectors">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v9l8 4M12 3a9 9 0 109 9"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="earnings" title="Earnings (7d)" aria-label="Earnings">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 4h18v17H3zM3 9h18M8 2v4M16 2v4"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="news" title="Live news" aria-label="News">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg>
+        </button>
+        <button type="button" class="tab rail__btn" data-tab="guide" title="Edge / Guide" aria-label="Edge and Guide">
+          <span class="rail__bar"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19V5m0 14h16M8 16l3-4 3 2 4-6"/></svg>
+        </button>
+      </div>
+      <div class="rail__avatar" title="Market Pulse">MP</div>
+    </nav>
+
+    <!-- ===== CENTER COLUMN ===== -->
+    <div class="center">
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <div class="topbar__title">
+          <div class="topbar__eyebrow">Pulse Terminal</div>
+          <div class="topbar__heading" id="viewTitle">Command Center</div>
+        </div>
+
+        <label class="search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="search" id="symbolSearch" placeholder="Analyze any ticker — NVDA, RELIANCE, TSLA, SBIN.NS…" autocomplete="off" />
+          <kbd>↵</kbd>
+        </label>
+
+        <div class="pills">
+          <span class="pill" id="usPill"><span class="pill__dot" style="background:#34D77F"></span><span class="pill__label">US</span><span class="pill__value" style="color:#34D77F">LIVE</span></span>
+          <span class="pill" id="inPill"><span class="pill__dot" style="background:#FB923C"></span><span class="pill__label">IN</span><span class="pill__value" style="color:#FB923C">LIVE</span></span>
+          <span class="pill" id="scanPill"><span class="pill__dot" style="background:#38BDF8"></span><span class="pill__label">SCAN</span><span class="pill__value" id="scanPillValue" style="color:#56C6F5">—</span></span>
+          <span class="live-pill" id="livePill" hidden>Updating…</span>
+          <span class="pill status-pill" id="connStatus">Connecting…</span>
+          <button type="button" id="alertBell" class="bell-btn" title="Alerts (high buy score, new S+ smart money, pre-earnings, news bursts)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+            <span id="alertCount" class="bell-count">0</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="center__main">
+        <!-- STAT CARDS (bento row) -->
+        <section class="stats" id="statsBar"></section>
+
+        <!-- HOT MOVERS / COMMAND CENTER -->
+        <main class="tab-panel active" id="panel-hot">
+          <div class="cc-layout">
+            <div class="cc-main">
+              <div class="toolbar">
+                <button type="button" id="analyzeBtn" class="btn-primary" title="Run the full 100+ factor engine + scoring + news intel on any stock">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-6.2-8.5"/><path d="M21 3v6h-6"/></svg>
+                  Analyze
+                </button>
+                <button type="button" id="discoverBtn" class="btn-secondary small" title="Scrape multiple websites + large static pools for many more listed US/India names">🔍 Scan More</button>
+                <button type="button" id="fullScanBtn" class="btn-secondary small accent-violet" title="EXHAUSTIVE FULL SCAN: scan ALL reachable India + US listed stocks with maximum data for full accuracy.">🔬 Full Exhaustive Scan</button>
+                <button type="button" id="loadFullScanBtn" class="btn-ghost small" title="Load results from the last full exhaustive scan">Load Last Scan</button>
+                <span id="sectorFilterBadge" class="sector-filter-badge" hidden></span>
+                <span class="toolbar__spacer"></span>
+                <select id="sortBy" aria-label="Sort by">
+                  <option value="score">Buy score</option>
+                  <option value="quality">Quality score</option>
+                  <option value="factors">Factors hit</option>
+                  <option value="day">Day %</option>
+                  <option value="rvol">Volume</option>
+                </select>
+                <button type="button" id="exportHotBtn" class="btn-ghost small" title="Export current hot list as CSV">CSV</button>
+              </div>
+
+              <section class="panel table-panel">
+                <div class="panel__head">
+                  <span class="panel__pulse"></span>
+                  <h2>Hot Movers</h2>
+                  <span class="panel__sub">ranked by buy score</span>
+                  <div class="tabs market-filters" role="tablist">
+                    <button type="button" class="tab2 chip active" data-market="all">All</button>
+                    <button type="button" class="tab2 chip" data-market="us"><span class="tab__dot" style="background:#60A5FA"></span>US</button>
+                    <button type="button" class="tab2 chip" data-market="india"><span class="tab__dot" style="background:#FB923C"></span>India</button>
+                  </div>
+                  <div class="panel__filters">
+                    <button type="button" class="chip filter-chip" id="earlyOnlyChip" data-early="0">Early buys only</button>
+                    <button type="button" class="chip filter-chip" id="whaleOnlyChip" data-whale="0">Whale / Politician</button>
+                  </div>
+                </div>
+                <p class="panel-hint" id="hotHint">Live ranking — click any score or row for the full 100+ factor checklist. Use 🔍 Scan More for aggressive multi-website discovery scans.</p>
+                <div class="table-wrap">
+                  <table id="hotTable" class="grid-table">
+                    <thead>
+                      <tr>
+                        <th class="col-sym">Symbol</th>
+                        <th class="col-trend">Trend</th>
+                        <th class="col-cats">Catalysts &amp; Reasons</th>
+                        <th class="col-rvol">Rel Vol</th>
+                        <th class="col-conf">Conf</th>
+                        <th class="col-day">Day Δ</th>
+                        <th class="col-buy">Buy Score</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+                <p class="row-count" id="hotCount"></p>
+              </section>
+            </div>
+
+            <!-- RIGHT: INTELLIGENCE FEED + DETAIL -->
+            <aside class="intel">
+              <div class="intel__head">
+                <h3>Intelligence Feed</h3>
+                <span class="intel__viewall" id="intelViewAll">View all</span>
+              </div>
+              <div id="intelFeed" class="intel__feed"></div>
+              <div class="detail-panel">
+                <h2 id="detailTitle" class="detail-panel__title">Stock detail</h2>
+                <div id="detail" class="detail-empty">
+                  <p>Pick a stock from the table</p>
+                  <p class="muted">Score, factor checklist, alerts, chart</p>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </main>
+
+        <!-- MY LIST / WATCH -->
+        <main class="tab-panel" id="panel-watch" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">My List <span class="view-h__sub">server-persisted + personalized alert rules</span></h2>
+            <p class="panel-hint">Server-backed (multi-device / restart safe). Add from Hot / Detail / Earnings. <strong>Alert Rules</strong> below trigger in-app + browser notifications for exact investor moves, buy_score&gt;65 + rvol&gt;2 etc.</p>
+            <div class="toolbar">
+              <button type="button" id="manageAlertRulesBtn" class="btn-secondary small" title="Create / manage personalized alert rules">🔔 Manage Alert Rules</button>
+              <button type="button" id="refreshServerWatchBtn" class="btn-ghost small">↻ Sync Server</button>
+              <button type="button" id="exportWatchBtn" class="btn-ghost small">Export CSV</button>
+              <button type="button" id="clearWatchBtn" class="btn-danger small">Clear list</button>
+              <span id="watchCount" class="muted"></span>
+            </div>
+            <div class="table-wrap">
+              <table id="watchTable" class="data-table">
+                <thead>
+                  <tr><th>Symbol</th><th>Buy</th><th>Qual</th><th>Factors</th><th>Added / History</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p class="muted" id="watchHint">Server-synced. Use "★ Watch + Alert" from detail / hot rows for quick add.</p>
+
+            <div id="alertRulesSection" class="rules-section" style="display:none;">
+              <h4>Active Alert Rules (server)</h4>
+              <div id="alertRulesList" class="rules-list"></div>
+              <div class="toolbar rules-form">
+                <select id="ruleTypeSel">
+                  <option value="score">score (buy_score + rvol)</option>
+                  <option value="smart_money">smart_money (has S+ investor)</option>
+                  <option value="earnings">earnings (near + score)</option>
+                  <option value="custom">custom</option>
+                </select>
+                <input id="ruleMinScore" type="number" placeholder="min buy_score" value="65" />
+                <input id="ruleMinRvol" type="number" step="0.5" placeholder="min rvol" value="2" />
+                <label class="rule-check"><input type="checkbox" id="ruleHasInvestor" checked /> has S+/whale/politician</label>
+                <button type="button" id="addRuleBtn" class="btn-secondary tiny">Add Rule</button>
+                <button type="button" id="hideRulesBtn" class="btn-ghost tiny">Hide</button>
+              </div>
+              <p class="muted small-note">Rules evaluated live on scans. Matches push WS "alert", auto-add high-conv to watchlist.</p>
+            </div>
+          </section>
+        </main>
+
+        <!-- PORTFOLIO / PAPER JOURNAL -->
+        <main class="tab-panel" id="panel-portfolio" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">Portfolio <span class="view-h__sub">Paper Trading Journal (server-persisted)</span></h2>
+            <p class="panel-hint">Track paper buys with entry thesis. Live Buy/Qual &amp; est P&amp;L pulled from cache or on-demand analyze. Close records realized PnL + outcome.</p>
+
+            <div id="portfolioSummary" class="portfolio-summary"></div>
+
+            <div class="toolbar">
+              <button type="button" id="refreshPortfolioBtn" class="btn-secondary small">Refresh</button>
+              <button type="button" id="exportJournalBtn" class="btn-ghost small">Export Journal CSV</button>
+              <span id="portfolioCount" class="muted"></span>
+            </div>
+
+            <h3 class="view-h3">Open paper positions</h3>
+            <div class="table-wrap">
+              <table id="portfolioTable" class="data-table">
+                <thead>
+                  <tr><th>Symbol</th><th>Entry</th><th>Live Buy</th><th>Live Qual</th><th>Qty</th><th>Est P&amp;L</th><th>SL / Target</th><th>Notes</th><th>Actions</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+
+            <div class="portfolio-form panel">
+              <h3 class="view-h3">Log new paper buy (uses current analyze data + your size)</h3>
+              <div class="port-form-row">
+                <input type="text" id="portSymbol" placeholder="SYMBOL e.g. NVDA or RELIANCE" />
+                <input type="number" id="portQty" placeholder="Qty" value="100" step="1" />
+                <input type="number" id="portSL" placeholder="SL $" step="0.01" />
+                <input type="number" id="portTarget" placeholder="Target $" step="0.01" />
+                <input type="text" id="portNotes" placeholder="Notes / thesis (optional)" />
+                <button type="button" id="logPaperBuyBtn" class="btn-primary">📁 Log Paper Buy</button>
+              </div>
+              <p class="muted small-note">Entry price/score pulled from live state or /analyze (same engine). One position per symbol.</p>
+            </div>
+
+            <h3 class="view-h3">Journal history (positives / negatives + outcomes)</h3>
+            <div id="journalList" class="journal-list"></div>
+          </section>
+        </main>
+
+        <!-- S+ RADAR -->
+        <main class="tab-panel" id="panel-radar" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">S+ Radar <span class="view-h__sub">Named smart money &amp; politician activity</span></h2>
+            <p class="panel-hint">Live and recent hits for legends (Kela, Kacholia, Buffett, ARK…), politicians (Pelosi, Congress disclosures), FII flows with buy context. <strong>Click any row</strong> for who exactly, the headline snippet, and why the algorithm gives S+ (6.5×) weight.</p>
+            <div id="radarList" class="radar-list"></div>
+            <p class="muted">Powered by the same news intel + smart_money registry used for every factor breakdown.</p>
+          </section>
+        </main>
+
+        <!-- SECTORS -->
+        <main class="tab-panel" id="panel-sectors" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">Sector map</h2>
+            <p class="panel-hint">Stocks grouped by Yahoo sector · cyclical / defensive / growth · top <strong>early buys</strong> per sector. Click a sector or stock to inspect.</p>
+            <div class="toolbar sector-toolbar">
+              <div class="tabs" id="sectorMarketChips">
+                <button type="button" class="tab2 chip active" data-sector-market="all">All</button>
+                <button type="button" class="tab2 chip" data-sector-market="us">US</button>
+                <button type="button" class="tab2 chip" data-sector-market="india">India</button>
+              </div>
+              <span class="muted sector-toolbar-hint" id="sectorSummaryHint"></span>
+            </div>
+            <div class="cycle-strip" id="cycleStrip"></div>
+            <div class="sector-layout">
+              <div class="sector-list-wrap">
+                <div class="sector-list" id="sectorList"></div>
+              </div>
+              <aside class="sector-detail panel" id="sectorDetail">
+                <p class="muted">Select a sector to see top picks and all stocks in that group.</p>
+              </aside>
+            </div>
+          </section>
+        </main>
+
+        <!-- EARNINGS -->
+        <main class="tab-panel" id="panel-earnings" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">Earnings &amp; results <span class="hint" id="earningsCount"></span></h2>
+            <p class="panel-hint">Stocks reporting soon (calendar + news buzz from multiple sources). Click row for full analysis + DMA/EMA support/resistance signals.</p>
+            <div class="table-wrap">
+              <table id="earningsTable" class="data-table">
+                <thead>
+                  <tr><th>Symbol</th><th>Date</th><th>In</th><th>EPS est</th><th>Score</th><th>Day%</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </main>
+
+        <!-- NEWS -->
+        <main class="tab-panel" id="panel-news" hidden>
+          <section class="panel pad">
+            <h2 class="view-h">Live news</h2>
+            <p class="panel-hint">Headlines matched to your watchlist symbols</p>
+            <ul id="newsList" class="news-list"></ul>
+          </section>
+        </main>
+
+        <!-- GUIDE / EDGE -->
+        <main class="tab-panel" id="panel-guide" hidden>
+          <section class="panel pad guide">
+            <h2 class="view-h">Quick guide &amp; Backtest Edge</h2>
+            <div class="guide-grid">
+              <div class="guide-card"><h3>1. Hot Movers</h3><p><strong>Buy score</strong> = next-entry rank (bases, room to run, news). <strong>Quality</strong> = full checklist. Use <strong>Early buys only</strong> to hide extended names.</p></div>
+              <div class="guide-card"><h3>2. Whale / Politician (S+ tier)</h3><p>Gold badges = <strong>named buy</strong> in news: Kela, Kacholia, Buffett, Pelosi, FII flows. Scored at <strong>S+</strong> (6.5× weight).</p></div>
+              <div class="guide-card"><h3>3. Factors column</h3><p><strong>Full scan</strong> ~90s (factors). <strong>Price tick</strong> ~45s (day % moves). Table only re-sorts when data actually changes.</p></div>
+              <div class="guide-card"><h3>4. Earnings tab</h3><p>Who reports in the <strong>next 7 days</strong>. “TODAY” = results today.</p></div>
+              <div class="guide-card"><h3>5. Sectors tab</h3><p><strong>Cyclical strip</strong> = growth / cyclical / defensive counts. Each sector shows counts, rotation tag, and ranked picks.</p></div>
+              <div class="guide-card"><h3>6. Live updates</h3><p>Green <strong>Live</strong> = connected. Data refreshes every ~90 seconds.</p></div>
+              <div class="guide-card"><h3>7. My List + Alerts + S+ Radar</h3><p>★ Watch any ticker. 🔔 Bell for high buy, new S+ smart money, pre-earnings. / focus search • w watch • f factors • e export CSV.</p></div>
+              <div class="guide-card"><h3>8. Analyze is conviction-first</h3><p>Search + Analyze runs the same deep engine and shows <strong>Positives</strong> vs <strong>Negatives/Risks</strong> + a plain-English verdict.</p></div>
+              <div class="guide-card span-2"><h3>9. Backtest Edge / Historical Performance</h3><p>Real backtesting from scan_snapshots + forward yf returns (1d/3d/7d/14d). Rich hit rates by score bucket + confidence breakdowns + factor performance.</p>
+                <button type="button" id="loadEdgeBtn" class="btn-secondary small">Load / Refresh live Edge stats</button>
+                <div id="edgeResults" class="edge-results"></div>
+              </div>
+            </div>
+            <p class="muted">Not financial advice. Verify on NSE/BSE or SEC before trading.</p>
+          </section>
+        </main>
+      </div>
     </div>
-    <div class="status-wrap">
-      <button type="button" id="alertBell" class="icon-btn" title="Alerts (high buy score, new S+ smart money, pre-earnings setups, news bursts)">🔔 <span id="alertCount">0</span></button>
-      <span class="live-pill" id="livePill" hidden>Updating…</span>
-      <div class="status" id="connStatus">Connecting…</div>
-    </div>
-  </header>
+  </div>
 
-  <section class="stats" id="statsBar"></section>
-
-  <nav class="tabs" id="mainTabs" aria-label="Main sections">
-    <button type="button" class="tab active" data-tab="hot">🔥 Hot Movers</button>
-    <button type="button" class="tab" data-tab="watch">★ My List</button>
-    <button type="button" class="tab" data-tab="portfolio">📁 Portfolio</button>
-    <button type="button" class="tab" data-tab="radar">🐳 S+ Radar</button>
-    <button type="button" class="tab" data-tab="sectors">📊 Sectors</button>
-    <button type="button" class="tab" data-tab="earnings">📅 Earnings (7d)</button>
-    <button type="button" class="tab" data-tab="news">📰 News</button>
-    <button type="button" class="tab" data-tab="guide">❓ Guide</button>
-  </nav>
-
-  <!-- HOT MOVERS -->
-  <main class="tab-panel active" id="panel-hot">
-    <div class="hot-intro">
-      <h2 class="hot-title">Hot Movers</h2>
-      <p class="hot-desc"><strong>Buy score</strong> ranks early setups (room to run, bases, news catalysts) and <em>penalizes</em> names already at 52-week highs. <strong>Quality score</strong> is the full checklist. <strong>Analyze</strong> (or Enter on any ticker) now shows clear <strong>Positives</strong> vs <strong>Negatives/Risks</strong> + plain-English conviction verdict so you can decide fast. Click <em>any</em> score, whale badge, day %, chart, or row for details or full factors. S+ Radar + whale badges open rich who/headline/why-S+ info. Everything is meant to be clicked or hovered.</p>
-    </div>
-    <div class="toolbar">
-      <input type="search" id="symbolSearch" placeholder="Filter hot list or type any ticker (NVDA, RELIANCE, TSLA, SBIN.NS…)" autocomplete="off" />
-      <button type="button" id="analyzeBtn" class="btn" title="Run the full 100+ factor engine + scoring + news intel on any stock (on-demand, same as the live scanner)">Analyze</button>
-      <button type="button" id="discoverBtn" class="btn small" title="Scrap multiple websites + large static pools for many more listed US/India names, run deep engine on-demand, surface new high-conviction 'discoveries' (aggressive full discovery beyond regular hot universe)">🔍 Scan More / Discover</button>
-      <button type="button" id="fullScanBtn" class="btn small" style="background:#4f46e5;color:white" title="EXHAUSTIVE FULL SCAN: Scan ALL reachable India + US listed stocks with maximum data (1y history, complete factors) for full accuracy. Time does not matter. Finds opportunities literally everywhere, leaving no stone unturned.">🔬 Full Exhaustive Scan (All Stocks, Max Accuracy)</button>
-      <button type="button" id="loadFullScanBtn" class="btn small" title="Load results from the last full exhaustive scan (top opportunities across the entire market)">Load Last Full Scan Results</button>
-      <div class="market-filters">
-        <button type="button" class="chip active" data-market="all">All</button>
-        <button type="button" class="chip" data-market="us">US</button>
-        <button type="button" class="chip" data-market="india">India</button>
-        <button type="button" class="chip" id="earlyOnlyChip" data-early="0">Early buys only</button>
-        <button type="button" class="chip" id="whaleOnlyChip" data-whale="0">Whale / Politician</button>
-      </div>
-      <span id="sectorFilterBadge" class="sector-filter-badge" hidden></span>
-      <select id="sortBy" aria-label="Sort by">
-        <option value="score">Sort: Buy score (next entry)</option>
-        <option value="quality">Sort: Quality score</option>
-        <option value="factors">Sort: Factors hit</option>
-        <option value="day">Sort: Day %</option>
-        <option value="rvol">Sort: Volume</option>
-      </select>
-      <button type="button" id="exportHotBtn" class="btn small" title="Export current hot list as CSV">CSV</button>
-    </div>
-    <div class="split">
-      <section class="panel table-panel">
-        <p class="panel-hint" id="hotHint">Live ranking — click Factors pill for full checklist. Use 🔍 Scan More / Discover for aggressive multi-website + large-pool deep scans (hundreds more listed names beyond regular universe).</p>
-        <div class="table-wrap">
-          <table id="hotTable">
-            <thead>
-              <tr>
-                <th>Symbol</th>
-                <th>Buy</th>
-                <th>Qual</th>
-                <th title="Passed / applicable checks — click to inspect">Factors ↗</th>
-                <th>Day%</th>
-                <th>RVOL</th>
-                <th>Chart</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-        <p class="row-count" id="hotCount"></p>
-      </section>
-      <aside class="panel detail-panel sticky-detail">
-        <h2 id="detailTitle">Stock detail</h2>
-        <div id="detail" class="detail-empty">
-          <p>👈 Pick a stock from the table</p>
-          <p class="muted">Score, factor checklist, alerts, chart</p>
-        </div>
-      </aside>
-    </div>
-  </main>
-
-  <!-- MY LIST / WATCH -->
-  <main class="tab-panel" id="panel-watch" hidden>
-    <section class="panel">
-      <h2>★ My List — server-persisted + personalized alert rules</h2>
-      <p class="panel-hint">Server-backed (multi-device / restart safe). Add from Hot/Detail/Earnings. <strong>Alert Rules</strong> below trigger in-app + browser notifications for exact investor moves, buy_score>65 + rvol>2 etc. (reuses full analyze + smart_money naming).</p>
-      <div class="toolbar">
-        <button type="button" id="exportWatchBtn" class="btn small">Export CSV</button>
-        <button type="button" id="clearWatchBtn" class="btn small danger">Clear list</button>
-        <button type="button" id="manageAlertRulesBtn" class="btn small" title="Create / manage personalized alert rules (e.g. min buy score + has S+ whale + rvol)">🔔 Manage Alert Rules</button>
-        <button type="button" id="refreshServerWatchBtn" class="btn small">↻ Sync Server</button>
-        <span id="watchCount" class="muted"></span>
-      </div>
-      <div class="table-wrap">
-        <table id="watchTable">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Buy</th>
-              <th>Qual</th>
-              <th>Factors</th>
-              <th>Added / History</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <p class="muted" id="watchHint">Server-synced. Use "★ Watch + Alert" from detail/hot rows for quick add. Click alerts bell for live server-pushed high-conviction (🚨 Investor exact name preserved).</p>
-
-      <!-- Simple inline Alert Rules manager (toggleable; full CRUD via modal too) -->
-      <div id="alertRulesSection" style="margin-top:1rem;border-top:1px solid #334155;padding-top:0.75rem;display:none;">
-        <h4 style="margin:0 0 0.4rem">Active Alert Rules (server)</h4>
-        <div id="alertRulesList" style="font-size:0.85rem;margin-bottom:0.5rem"></div>
-        <div class="toolbar" style="gap:4px;flex-wrap:wrap">
-          <select id="ruleTypeSel">
-            <option value="score">score (buy_score + rvol)</option>
-            <option value="smart_money">smart_money (has S+ investor)</option>
-            <option value="earnings">earnings (near + score)</option>
-            <option value="custom">custom</option>
-          </select>
-          <input id="ruleMinScore" type="number" placeholder="min buy_score" value="65" style="width:90px" />
-          <input id="ruleMinRvol" type="number" step="0.5" placeholder="min rvol" value="2" style="width:70px" />
-          <label style="font-size:0.75rem"><input type="checkbox" id="ruleHasInvestor" checked /> has S+/whale/politician</label>
-          <button type="button" id="addRuleBtn" class="btn tiny">Add Rule</button>
-          <button type="button" id="hideRulesBtn" class="btn tiny">Hide</button>
-        </div>
-        <p class="muted" style="font-size:0.7rem">Rules evaluated live on scans. Matches push WS "alert", auto-add high-conv to watchlist, log to market_events. Exact investor names from smart_money_intel + crawler.</p>
-      </div>
-    </section>
-  </main>
-
-  <!-- PORTFOLIO / PAPER JOURNAL -->
-  <main class="tab-panel" id="panel-portfolio" hidden>
-    <section class="panel">
-      <h2>📁 Portfolio — Paper Trading Journal (server-persisted)</h2>
-      <p class="panel-hint">Track paper buys with entry thesis (positives vs negatives from the same 140+ engine). Live Buy/Qual &amp; est P&amp;L pulled from cache or on-demand analyze. Close records realized PnL + outcome. Click rows for full detail. Add from hot rows / detail / watch with one click. Survives refresh.</p>
-
-      <div id="portfolioSummary" class="portfolio-summary"></div>
-
-      <div class="toolbar">
-        <button type="button" id="refreshPortfolioBtn" class="btn small">Refresh</button>
-        <button type="button" id="exportJournalBtn" class="btn small">Export Journal CSV</button>
-        <span id="portfolioCount" class="muted"></span>
-      </div>
-
-      <h3 style="margin:0.6rem 0 0.3rem;font-size:0.95rem">Open paper positions</h3>
-      <div class="table-wrap">
-        <table id="portfolioTable">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Entry</th>
-              <th>Live Buy</th>
-              <th>Live Qual</th>
-              <th>Qty</th>
-              <th>Est P&amp;L</th>
-              <th>SL / Target</th>
-              <th>Notes</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="portfolio-form panel" style="margin-top:0.75rem">
-        <h3 style="margin:0 0 0.3rem;font-size:0.9rem">Log new paper buy (uses current analyze data + your size)</h3>
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:flex-end">
-          <input type="text" id="portSymbol" placeholder="SYMBOL e.g. NVDA or RELIANCE" style="width:160px" />
-          <input type="number" id="portQty" placeholder="Qty" value="100" step="1" style="width:90px" />
-          <input type="number" id="portSL" placeholder="SL $" step="0.01" style="width:90px" />
-          <input type="number" id="portTarget" placeholder="Target $" step="0.01" style="width:90px" />
-          <input type="text" id="portNotes" placeholder="Notes / thesis (optional)" style="flex:1;min-width:140px" />
-          <button type="button" id="logPaperBuyBtn" class="btn">📁 Log Paper Buy</button>
-        </div>
-        <p class="muted" style="font-size:0.72rem;margin-top:0.2rem">Entry price/score pulled from live state or /analyze (same engine). One position per symbol (replaces prior).</p>
-      </div>
-
-      <h3 style="margin:0.8rem 0 0.3rem;font-size:0.95rem">Journal history (positives/negatives + outcomes)</h3>
-      <div id="journalList" class="journal-list" style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:0.35rem"></div>
-    </section>
-  </main>
-
-  <!-- S+ RADAR -->
-  <main class="tab-panel" id="panel-radar" hidden>
-    <section class="panel">
-      <h2>🐳 S+ Radar — Named smart money & politician activity</h2>
-      <p class="panel-hint">Live and recent hits for legends (Kela, Kacholia, Buffett, ARK…), politicians (Pelosi, Congress disclosures), FII flows with buy context. <strong>Click any whale badge or row</strong> for who exactly, the headline snippet, and why the algorithm gives S+ (6.5×) weight. These are the highest-conviction signals.</p>
-      <div id="radarList" class="radar-list"></div>
-      <p class="muted">Powered by the same news intel + smart_money registry used for every factor breakdown. Broad Google News + RSS feeds surface mentions from thousands of sources.</p>
-    </section>
-  </main>
-
-  <!-- SECTORS -->
-  <main class="tab-panel" id="panel-sectors" hidden>
-    <section class="panel">
-      <h2>Sector map</h2>
-      <p class="panel-hint">Stocks grouped by Yahoo sector · cyclical / defensive / growth · top <strong>early buys</strong> per sector. Click a sector or stock to inspect.</p>
-      <div class="toolbar sector-toolbar">
-        <div class="chips" id="sectorMarketChips">
-          <button type="button" class="chip active" data-sector-market="all">All</button>
-          <button type="button" class="chip" data-sector-market="us">US</button>
-          <button type="button" class="chip" data-sector-market="india">India</button>
-        </div>
-        <span class="muted sector-toolbar-hint" id="sectorSummaryHint"></span>
-      </div>
-      <div class="cycle-strip" id="cycleStrip"></div>
-      <div class="sector-layout">
-        <div class="sector-list-wrap">
-          <div class="sector-list" id="sectorList"></div>
-        </div>
-        <aside class="sector-detail panel" id="sectorDetail">
-          <p class="muted">Select a sector to see top picks and all stocks in that group.</p>
-        </aside>
-      </div>
-    </section>
-  </main>
-
-  <!-- EARNINGS -->
-  <main class="tab-panel" id="panel-earnings" hidden>
-    <section class="panel">
-      <h2>Earnings &amp; results (calendar + recent news buzz) <span class="hint" id="earningsCount"></span></h2>
-      <p class="panel-hint">Stocks reporting soon (calendar + news buzz from multiple sources). Now includes more India .NS via enhanced scraping (Moneycontrol, ET, Google India earnings). Click row for full analysis + new simple DMA/EMA support/resistance signals.</p>
-      <div class="table-wrap">
-        <table id="earningsTable">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Date</th>
-              <th>In</th>
-              <th>EPS est</th>
-              <th>Score</th>
-              <th>Day%</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-
-  <!-- NEWS -->
-  <main class="tab-panel" id="panel-news" hidden>
-    <section class="panel">
-      <h2>Live news</h2>
-      <p class="panel-hint">Headlines matched to your watchlist symbols</p>
-      <ul id="newsList"></ul>
-    </section>
-  </main>
-
-  <!-- GUIDE -->
-  <main class="tab-panel" id="panel-guide" hidden>
-    <section class="panel guide">
-      <h2>Quick guide</h2>
-      <div class="guide-grid">
-        <div class="guide-card">
-          <h3>1. Hot Movers</h3>
-          <p><strong>Buy score</strong> = next-entry rank (bases, room to run, news). <strong>Quality</strong> = full checklist. Use <strong>Early buys only</strong> to hide extended names.</p>
-        </div>
-        <div class="guide-card">
-          <h3>2. Whale / Politician (S+ tier)</h3>
-          <p>Gold badges = <strong>named buy</strong> in news: Kela, Kacholia, Buffett, Pelosi, FII flows, etc. Scored at <strong>S+</strong> (6.5× weight). Filter with <strong>Whale / Politician</strong> chip.</p>
-        </div>
-        <div class="guide-card">
-          <h3>3. Factors column</h3>
-          <p><strong>Full scan</strong> ~90s (factors). <strong>Price tick</strong> ~45s (day % moves). Table only re-sorts when data actually changes — not a blank refresh.</p>
-        </div>
-        <div class="guide-card">
-          <h3>4. Earnings tab</h3>
-          <p>Who reports in the <strong>next 7 days</strong>. “TODAY” = results today.</p>
-        </div>
-        <div class="guide-card">
-          <h3>5. Sectors tab</h3>
-          <p><strong>Cyclical strip</strong> = growth / cyclical / defensive counts. Each sector shows stock count, hot &amp; early-buy counts, rotation tag, and ranked picks (non-extended first).</p>
-        </div>
-        <div class="guide-card">
-          <h3>6. Live updates</h3>
-          <p>Green <strong>Live</strong> = connected. Data refreshes every ~90 seconds.</p>
-        </div>
-        <div class="guide-card">
-          <h3>7. My List + Alerts + S+ Radar (new)</h3>
-          <p>★ Watch any ticker (search/Analyze or hot rows). Local history + score memory. 🔔 Bell for high buy, new S+ smart money, pre-earnings. Dedicated Radar tab for named whales/politicians/FII. / focus search • w watch • f factors • e export CSV.</p>
-        </div>
-        <div class="guide-card">
-          <h3>8. Analyze is now conviction-first</h3>
-          <p>Search + Analyze (or Enter) runs the exact same deep engine and immediately shows <strong>Positives</strong> (S+ whales, entry setups, catalysts, fundamentals) vs <strong>Negatives/Risks</strong> + a plain-English verdict (“Strong S+ early setup – favor on pullbacks”). Click scores, whale badges, charts, day% anywhere for details or full factors. Everything on screen is meant to be clicked or hovered.</p>
-        </div>
-        <div class="guide-card">
-          <h3>9. Backtest Edge / Historical Performance</h3>
-          <p>Real backtesting from scan_snapshots + forward yf returns (1d/3d/7d/14d). Click <strong>📊 Backtest Edge</strong> in top stats bar (or button) to load rich hit rates by score bucket + confidence breakdowns (from price_crawler) + factor performance mini-table (reuses engine factor_breakdown in payloads). Also shows regime stub (VIX + trend).</p>
-          <button type="button" id="loadEdgeBtn" class="btn small" style="margin-top:4px">Load / Refresh live Edge stats</button>
-          <div id="edgeResults" style="margin-top:6px;font-size:0.82rem"></div>
-        </div>
-      </div>
-      <p class="muted">Not financial advice. Verify on NSE/BSE or SEC before trading.</p>
-    </section>
-  </main>
-
+  <!-- FACTOR BREAKDOWN MODAL -->
   <div id="factorModal" class="modal" hidden aria-hidden="true">
     <div class="modal-backdrop" data-close="factorModal"></div>
-    <div class="modal-panel" role="dialog" aria-labelledby="factorModalTitle">
+    <div class="modal-panel factors" role="dialog" aria-labelledby="factorModalTitle">
       <header class="modal-header">
         <div>
-          <h2 id="factorModalTitle">Factor checklist</h2>
+          <h2 id="factorModalTitle">Factor breakdown</h2>
           <p class="modal-sub" id="factorModalSub"></p>
         </div>
-        <button type="button" class="modal-close" data-close="factorModal" aria-label="Close">×</button>
+        <button type="button" class="modal-close" data-close="factorModal" aria-label="Close">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
       </header>
       <div class="modal-toolbar">
         <button type="button" class="filter-pill active" data-factor-filter="all">All</button>
@@ -332,7 +361,7 @@
     </div>
   </div>
 
-  <footer class="footer">Market Pulse · SQLite auto-cleanup · Yahoo + RSS</footer>
-  <script src="/static/app.js?v=11"></script>
+  <footer class="footer">Pulse Terminal · Market Pulse engine · SQLite auto-cleanup · Yahoo + RSS</footer>
+  <script src="/static/app.js?v=20"></script>
 </body>
 </html>
