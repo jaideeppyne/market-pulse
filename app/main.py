@@ -33,7 +33,6 @@ from app.db import (
     remove_from_watchlist,
     snapshots_for_symbol,
     upcoming_earnings,
-    update_alert_rule_last_triggered,
 )
 from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
@@ -714,75 +713,6 @@ async def health():
     stats["db_path"] = str(DB_PATH)
     stats["db_size_mb"] = db_file_size_mb()
     return {"status": "ok", "stats": stats}
-
-
-# ===================== Watchlist + Alert Rules CRUD (server-persisted) =====================
-
-@app.get("/api/watchlist")
-async def api_list_watchlist():
-    items = await list_watchlist()
-    async with state.lock:
-        state.watches = items
-    return {"watches": items, "count": len(items)}
-
-
-@app.post("/api/watchlist")
-async def api_add_watch(payload: dict):
-    sym = (payload.get("symbol") or "").strip().upper()
-    notes = payload.get("notes") or ""
-    if not sym:
-        return {"error": "symbol required"}
-    ok = await add_to_watchlist(sym, notes)
-    await _refresh_state_watches_and_alerts()
-    state.broadcast_event.set()
-    return {"ok": ok, "symbol": sym, "watches": await list_watchlist()}
-
-
-@app.delete("/api/watchlist/{symbol:path}")
-async def api_remove_watch(symbol: str):
-    from urllib.parse import unquote
-    sym = unquote(symbol).upper()
-    await remove_from_watchlist(sym)
-    await _refresh_state_watches_and_alerts()
-    state.broadcast_event.set()
-    return {"ok": True, "symbol": sym}
-
-
-@app.get("/api/alert_rules")
-async def api_list_alert_rules():
-    rules = await list_alert_rules()
-    return {"rules": rules, "count": len(rules)}
-
-
-@app.post("/api/alert_rules")
-async def api_add_alert_rule(payload: dict):
-    rtype = payload.get("rule_type", "custom")
-    cond = payload.get("condition") or payload.get("conditions") or {}
-    enabled = payload.get("enabled", True)
-    rid = await add_alert_rule(rtype, cond, bool(enabled))
-    return {"id": rid, "rule_type": rtype, "condition": cond, "enabled": bool(enabled)}
-
-
-@app.delete("/api/alert_rules/{rule_id}")
-async def api_delete_alert_rule(rule_id: int):
-    await delete_alert_rule(rule_id)
-    return {"ok": True, "id": rule_id}
-
-
-@app.post("/api/alert_rules/eval")
-async def api_manual_eval_alerts():
-    """Manual trigger for testing/eval against current state snapshot + hot + investor_events."""
-    snap = await state.snapshot(light=False)
-    fired = await _evaluate_and_fire_alerts(snap, snap.get("hot", []))
-    return {"fired": len(fired), "alerts": fired}
-
-
-@app.get("/api/alerts/recent")
-async def api_recent_alerts(limit: int = 50):
-    al = await recent_alerts(limit)
-    async with state.lock:
-        state.recent_server_alerts = al[:30]
-    return {"alerts": al, "count": len(al)}
 
 
 @app.websocket("/ws")

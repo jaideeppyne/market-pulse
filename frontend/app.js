@@ -53,6 +53,10 @@
   let seenSmartMoney = new Set();
   let alertsEnabled = true;
 
+  // Portfolio / Paper Journal (server persisted)
+  let portfolioData = null; // {positions, stats, count}
+  let journalData = [];
+
   const UI_HELP = {
     hot: "Top stocks that pass the current buy-score threshold. Ranked by next-entry quality, not just raw momentum.",
     watch: "Server-persisted My List (shared across devices/restarts). Rules for personalized alerts (score>65 + rvol>2, exact S+ investor etc) evaluated live. Use ★ Watch + Alert buttons.",
@@ -61,6 +65,7 @@
     earnings: "Companies with upcoming results or strong earnings/news buzz in the next window.",
     news: "Latest RSS/Google News headlines matched to tracked symbols.",
     guide: "Short reference for the scanner workflow.",
+    portfolio: "Paper positions + journal. Server-stored (survives refresh). Log buys using live engine data; close records realized PnL + thesis snapshot (positives vs negatives).",
     highconv: "Count of hot-list names with buy score at or above 70. Click to focus on cleaner early setups.",
     whale: "Count of hot-list names with S+ smart-money style signals. Click to toggle whale/politician filtering.",
     reset: "Resets filters and returns the hot list to the default all-market view.",
@@ -378,12 +383,6 @@
       }
       activeTab = tab;
       if (tab === "sectors") renderSectors(lastData);
-      if (tab === "watch") {
-        renderWatch(lastData);
-        // refresh rules list if the section is visible
-        const sec = document.getElementById("alertRulesSection");
-        if (sec && sec.style.display === "block") refreshAlertRulesUI();
-      }
       if (tab === "radar") renderRadar(lastData);
     });
   });
@@ -450,28 +449,6 @@
       renderWatch(lastData);
     }
   });
-  document.getElementById("manageAlertRulesBtn")?.addEventListener("click", () => {
-    const sec = document.getElementById("alertRulesSection");
-    if (sec) {
-      sec.style.display = (sec.style.display === "none" || !sec.style.display) ? "block" : "none";
-      if (sec.style.display === "block") refreshAlertRulesUI();
-    } else {
-      showAlertRulesModal();
-    }
-  });
-  document.getElementById("refreshServerWatchBtn")?.addEventListener("click", async () => {
-    await loadServerWatches();
-    const srvAl = await fetchRecentServerAlerts();
-    if (srvAl.length) {
-      // merge server alerts into local recent for display
-      srvAl.forEach(sa => {
-        const exists = recentAlerts.some(a => a.symbol===sa.symbol && a.msg===sa.message);
-        if (!exists) recentAlerts.unshift({type: sa.rule_type||"server", symbol:sa.symbol, msg: sa.message, ts: sa.triggered_at, score: sa.buy_score});
-      });
-      if (recentAlerts.length>30) recentAlerts.length=30;
-    }
-    renderAlertBell();
-    renderWatch(lastData);
   });
   alertBell?.addEventListener("click", () => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -1802,6 +1779,7 @@
         const whaleClickable = whale ? ` <span class="whale-badge clickable" data-whale-sym="${attrEsc(r.symbol)}" title="Click for who / headline / why S+ 6.5× boost">${whale.replace(/<[^>]+>/g,'')}</span>` : "";
         const discBadge = r.discovered ? `<span class="ext-badge" style="background:rgba(168,85,247,0.25);color:#c084fc;border-color:#c084fc" title="From multi-website + large pool discovery scan (not regular hot)">DISC</span>` : "";
         const fullBadge = r.full_exhaustive ? `<span class="ext-badge" style="background:#059669;color:white;border-color:#059669" title="From FULL EXHAUSTIVE scan across ALL India + US stocks (max data, full accuracy, no stone unturned)">FULL</span>` : "";
+        const paperBtnHtml = ` <button class="tiny" data-paper="${attrEsc(r.symbol)}" title="One-click paper buy into Portfolio (records entry + engine thesis positives/negatives)">📁</button>`;
         // Super heavy smart money display: exact name + quality immediately if present
         let investorLine = "";
         const sm = r.metrics && r.metrics.smart_money;
@@ -1811,7 +1789,6 @@
           investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
         }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${fullBadge}${whaleClickable}${investorLine}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from server My List">${watched}</button> <button class="tiny" data-watch-alert="${attrEsc(r.symbol)}" title="Add to My List + set personalized alert rule monitoring (server)">+A</button></td>
           <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${r.confidence_score != null ? `<span class="qual-pill" style="font-size:0.6rem;padding:1px 3px;background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence">${r.confidence_score}</span>` : ""}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
@@ -1824,7 +1801,6 @@
 
     hotBody.querySelectorAll("tr").forEach((tr) => {
       tr.addEventListener("click", (ev) => {
-        if (ev.target.closest(".factor-pill") || ev.target.closest(".tiny-watch") || ev.target.closest("[data-whale-sym]") || ev.target.closest("[data-act]") || ev.target.closest("[data-watch-alert]")) return;
         selectSymbol(tr.dataset.symbol, data);
       });
     });
@@ -1845,14 +1821,6 @@
         if (activeTab === "watch") renderWatch(data);
       });
     });
-    hotBody.querySelectorAll("[data-watch-alert]").forEach((btn) => {
-      btn.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        const sym = btn.dataset.watchAlert;
-        const row = findRow(sym, data);
-        addToWatchWithAlert(sym, row || {symbol: sym});
-        renderHot(data);
-        if (activeTab === "watch") renderWatch(data);
       });
     });
     // New: score / day / rvol / spark clicks → factors or re-analyze
@@ -1912,7 +1880,7 @@
     const isWatched = watchlist.some(w => w.symbol === row.symbol);
     const thesisHtml = `
       <div class="thesis-block">
-        <div class="thesis-head"><strong>${escapeHtml(thesis.archetype)}</strong> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button> <button class="tiny" data-act="thesis">Copy thesis</button></div>
+        <div class="thesis-head"><strong>${escapeHtml(thesis.archetype)}</strong> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button> <button class="tiny" data-act="paper">📁 Paper</button> <button class="tiny" data-act="thesis">Copy thesis</button></div>
         <ul class="thesis-bullets">${thesis.bullets.map(b => `<li>${escapeHtml(b)}</li>`).join("")}</ul>
         ${thesis.risks.length ? `<div class="risks"><strong>Risks:</strong> ${thesis.risks.map(r=>escapeHtml(r)).join(" · ")}</div>` : ""}
       </div>`;
@@ -1980,7 +1948,6 @@
       ${alerts ? `<ul class="alerts">${alerts}</ul>` : ""}
       <p class="muted section-label">Top passed checks (click factors button for all + weights)</p>
       <div class="factor-chips">${factorChips || '<span class="muted">None yet</span>'}${more}</div>
-      <div style="margin-top:0.4rem"><button class="tiny" data-act="whale">🐳 Whale details</button> <button class="tiny" data-act="thesis">Copy full thesis</button> <button class="tiny" data-act="watch">${isWatched ? "✓ Watched" : "★ Watch"}</button> <button class="tiny" data-act="watch-alert" title="Add to server watchlist + enable monitoring for personalized rules (investor moves etc)">★ Watch + Alert</button></div>
     </div>`;
 
     detailEl.querySelector(".detail-factor-btn")?.addEventListener("click", () => {
@@ -2015,10 +1982,6 @@
       renderDetail(row);
       renderWatch(lastData);
     });
-    extraBar?.querySelector('[data-act="watch-alert"]')?.addEventListener("click", (e) => {
-      addToWatchWithAlert(row.symbol, row);
-      renderDetail(row);
-      renderWatch(lastData);
     });
 
     // thesis / watch actions (legacy thesis block)
@@ -2028,10 +1991,6 @@
       renderDetail(row); // refresh
       renderWatch(lastData);
     });
-    thesisBlock?.querySelector('[data-act="watch-alert"]')?.addEventListener("click", (e) => {
-      addToWatchWithAlert(row.symbol, row);
-      renderDetail(row);
-      renderWatch(lastData);
     });
     thesisBlock?.querySelector('[data-act="thesis"]')?.addEventListener("click", () => copyThesis(row.symbol, row));
 
@@ -2149,6 +2108,7 @@
           <button class="tiny" data-act="analyze">Analyze</button>
           <button class="tiny" data-act="watch-alert" title="Re-add with alert monitoring">+Alert</button>
           <button class="tiny danger" data-act="remove">Remove</button>
+          <button class="tiny" data-act="paper">📁</button>
         </td>
       </tr>`);
     }
@@ -2160,9 +2120,6 @@
         if (e.target.dataset.act === "remove") {
           removeFromWatch(sym); return;
         }
-        if (e.target.dataset.act === "watch-alert") {
-          const r = findRow(sym, data) || {symbol: sym};
-          addToWatchWithAlert(sym, r); return;
         }
         if (e.target.dataset.act === "analyze" || !e.target.dataset.act) {
           document.querySelector('.tab[data-tab="hot"]')?.click();
@@ -2170,6 +2127,201 @@
         }
       });
     });
+  }
+
+  /* ========== PORTFOLIO / PAPER JOURNAL (first-class, server-backed, ties to engine thesis) ========== */
+
+  async function fetchPortfolio() {
+    try {
+      const res = await fetch("/api/portfolio");
+      if (!res.ok) throw new Error("portfolio fetch failed");
+      portfolioData = await res.json();
+      // also fetch journal for list
+      const jres = await fetch("/api/journal?limit=60");
+      if (jres.ok) {
+        const jd = await jres.json();
+        journalData = jd.journal || [];
+      }
+      return portfolioData;
+    } catch (e) {
+      console.warn("portfolio fetch", e);
+      portfolioData = {positions: [], stats: {}, count: 0};
+      journalData = [];
+      return portfolioData;
+    }
+  }
+
+  async function renderPortfolio(force = false) {
+    const sumEl = document.getElementById("portfolioSummary");
+    const tbody = document.querySelector("#portfolioTable tbody");
+    const countEl = document.getElementById("portfolioCount");
+    const jEl = document.getElementById("journalList");
+    if (!sumEl || !tbody) return;
+    if (!portfolioData || force) {
+      await fetchPortfolio();
+    }
+    const p = portfolioData || {positions: [], stats: {}};
+    const stats = p.stats || {};
+    sumEl.innerHTML = `
+      <div class="stat-row" style="display:flex;gap:0.6rem;flex-wrap:wrap">
+        <div class="stat-card"><span class="label">Open positions</span><span class="value">${p.count || 0}</span></div>
+        <div class="stat-card"><span class="label">Win rate (closed)</span><span class="value">${stats.winrate ?? 0}%</span></div>
+        <div class="stat-card"><span class="label">Realized PnL</span><span class="value ${ (stats.total_realized_pnl||0)>=0 ? 'pos':'neg'}">${stats.total_realized_pnl ?? 0}</span></div>
+        <div class="stat-card"><span class="label">Paper equity (entry + est open)</span><span class="value">$${stats.total_paper_value_est ?? stats.paper_equity_entry ?? 0}</span></div>
+        <div class="stat-card"><span class="label">Open PnL est</span><span class="value ${ (stats.open_pnl_est||0)>=0 ? 'pos':'neg'}">${stats.open_pnl_est ?? 0}</span></div>
+      </div>
+    `;
+    if (countEl) countEl.textContent = `${p.count || 0} open`;
+
+    // positions table w/ live + actions + editable notes
+    const rowsHtml = (p.positions || []).map(pos => {
+      const ep = pos.entry_price ? Number(pos.entry_price).toFixed(2) : "—";
+      const buy = pos.current_buy != null ? pos.current_buy : "—";
+      const qual = pos.current_qual != null ? pos.current_qual : "—";
+      const pnl = pos.est_pnl != null ? `${pos.est_pnl} (${pos.est_pnl_pct}%)` : "—";
+      const pnlCls = (pos.est_pnl||0) >= 0 ? "pos" : "neg";
+      const slt = [pos.sl ? `SL ${pos.sl}` : "", pos.target ? `T ${pos.target}` : ""].filter(Boolean).join(" / ") || "—";
+      const notesVal = (pos.notes || "").replace(/"/g, '&quot;');
+      return `<tr data-symbol="${attrEsc(pos.symbol)}" data-id="${pos.id || ''}">
+        <td><strong class="clickable" data-act="detail">${escapeHtml(pos.symbol)}</strong><br><span class="muted" style="font-size:0.7rem">entry @${ep} / ${pos.entry_score ?? ''}</span></td>
+        <td><span class="muted">${ep}</span></td>
+        <td><span class="score-pill">${buy}</span></td>
+        <td><span class="qual-pill">${qual}</span></td>
+        <td>${pos.qty ?? "—"}</td>
+        <td class="${pnlCls}">${pnl}</td>
+        <td class="muted" style="font-size:0.75rem">${slt}</td>
+        <td><input type="text" class="port-notes" data-sym="${attrEsc(pos.symbol)}" value="${notesVal}" style="width:140px;font-size:0.78rem" placeholder="thesis / notes" /></td>
+        <td>
+          <button class="tiny" data-act="analyze">Analyze</button>
+          <button class="tiny" data-act="close">Close</button>
+          <button class="tiny" data-act="detail">Detail</button>
+        </td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="9" class="muted">No open paper positions. Use "📁 Log Paper Buy" or click 📁 in Hot/Detail/Watch rows.</td></tr>`;
+
+    tbody.innerHTML = rowsHtml;
+
+    // wire row clicks + actions + live note save on blur
+    tbody.querySelectorAll("tr[data-symbol]").forEach(tr => {
+      const sym = tr.dataset.symbol;
+      tr.addEventListener("click", (e) => {
+        if (e.target.closest("input,button")) return;
+        const act = e.target.closest("[data-act]")?.dataset.act;
+        if (act === "detail" || act === "analyze" || !act) {
+          document.querySelector('.tab[data-tab="hot"]')?.click();
+          fetchFullSymbol(sym).then(full => { renderDetail(full); openFactorModal(sym, lastData); }).catch(()=>{});
+        }
+      });
+      tr.querySelectorAll("[data-act]").forEach(btn => {
+        btn.addEventListener("click", async (ev) => {
+          ev.stopPropagation();
+          const a = btn.dataset.act;
+          if (a === "analyze" || a === "detail") {
+            document.querySelector('.tab[data-tab="hot"]')?.click();
+            const full = await fetchFullSymbol(sym); renderDetail(full); openFactorModal(sym, lastData);
+          } else if (a === "close") {
+            if (confirm(`Close paper position in ${sym} and record realized PnL?`)) {
+              try {
+                await closePosition(sym);
+                await renderPortfolio(true);
+              } catch(err){ alert("Close failed: "+err); }
+            }
+          }
+        });
+      });
+      // editable notes persist on server
+      const inp = tr.querySelector(".port-notes");
+      if (inp) {
+        inp.addEventListener("blur", async () => {
+          const val = inp.value.trim();
+          try {
+            await fetch(`/api/position/${encodeURIComponent(sym)}/update`, {
+              method: "POST", headers: {"Content-Type":"application/json"},
+              body: JSON.stringify({notes: val || null})
+            });
+          } catch(_) {}
+        });
+        inp.addEventListener("keydown", e => { if (e.key==="Enter") inp.blur(); });
+      }
+    });
+
+    // render journal list w/ thesis + outcome (insightful)
+    if (jEl) {
+      jEl.innerHTML = (journalData || []).length ? (journalData.map(j => {
+        const d = (j.created_at || "").slice(0,16).replace("T"," ");
+        const pnl = j.outcome_pnl != null ? `<span class="${j.outcome_pnl>=0?'pos':'neg'}">${j.outcome_pnl}</span>` : "";
+        const thesis = (j.thesis_pos || j.thesis_neg) ? `<div class="muted" style="font-size:0.7rem;margin-top:1px">+ ${escapeHtml((j.thesis_pos||"").slice(0,90))}<br>− ${escapeHtml((j.thesis_neg||"").slice(0,80))}</div>` : "";
+        return `<div class="journal-row" data-symbol="${attrEsc(j.symbol)}" style="padding:0.25rem 0.35rem;border-bottom:1px solid var(--border);cursor:pointer">
+          <strong>${escapeHtml(j.symbol)}</strong> <span class="muted">${j.action}</span> @${j.price ?? ""} ×${j.qty ?? ""} ${pnl} <span class="muted" style="font-size:0.7rem">${d}</span>
+          ${thesis}
+          ${j.notes ? `<div style="font-size:0.72rem;color:#9ca3af">${escapeHtml(j.notes)}</div>` : ""}
+        </div>`;
+      }).join("")) : '<p class="muted" style="padding:0.4rem">No journal entries yet. Log buys and closes to build your performance + learning history.</p>';
+
+      jEl.querySelectorAll(".journal-row").forEach(row => {
+        row.addEventListener("click", () => {
+          const sym = row.dataset.symbol;
+          document.querySelector('.tab[data-tab="hot"]')?.click();
+          fetchFullSymbol(sym).then(full => { renderDetail(full); openFactorModal(sym, lastData); }).catch(()=>{});
+        });
+      });
+    }
+  }
+
+  async function addToPortfolio(symbol, extra = {}) {
+    symbol = symbol.toUpperCase();
+    // Pull best available entry data from cache or force quick analyze (reuse existing)
+    let row = findRow(symbol, lastData) || symbolCache.get(symbol);
+    let entryPrice = extra.entry_price, entryScore = extra.entry_score;
+    if (!entryPrice || !entryScore) {
+      if (row && row.metrics) {
+        entryPrice = entryPrice || row.metrics.price;
+        entryScore = entryScore || row.metrics.buy_score || row.score;
+      }
+    }
+    if (!entryPrice) {
+      // fallback: ensure we have fresh via existing pipeline
+      try {
+        const full = await fetchFullSymbol(symbol);
+        entryPrice = entryPrice || (full.metrics && full.metrics.price);
+        entryScore = entryScore || full.metrics?.buy_score || full.score;
+        row = full;
+      } catch(_) {}
+    }
+    const body = {
+      symbol,
+      qty: extra.qty || 100,
+      notes: extra.notes || (row ? (buildPositivesAndNegatives(row).positives.slice(0,2).join(" · ")) : null),
+      sl: extra.sl || null,
+      target: extra.target || null,
+      entry_price: entryPrice,
+      entry_score: entryScore,
+    };
+    const res = await fetch("/api/portfolio", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(await res.text());
+    // auto switch + refresh for delight
+    if (activeTab !== "portfolio") {
+      document.querySelector('.tab[data-tab="portfolio"]')?.click();
+    } else {
+      await renderPortfolio(true);
+    }
+    return res.json();
+  }
+
+  async function closePosition(symbol) {
+    const res = await fetch(`/api/position/${encodeURIComponent(symbol)}/close`, {method: "POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({})});
+    if (!res.ok) throw new Error("close failed");
+    return res.json();
+  }
+
+  // One-click paper trade integration: called from hot rows, detail, watch (reuse watch pattern)
+  function makePaperAddButton(sym, row) {
+    const b = document.createElement("button");
+    b.className = "tiny";
+    b.textContent = "📁";
+    b.title = "Add as paper position (log buy + entry thesis)";
+    b.onclick = (e) => { e.stopPropagation(); addToPortfolio(sym, {qty: 100}).catch(()=>{}); };
+    return b;
   }
 
   async function loadFactorCatalog() {
@@ -2307,8 +2459,6 @@
       if (rankingsChanged) void renderFactorModalBody(row);
     }
     if (activeTab === "watch") renderWatch(data);
-    // Occasional server watch refresh on live updates (keeps multi-device in sync without spam)
-    if (Math.random() < 0.12) loadServerWatches().catch(()=>{});
   }
 
   async function pollSnapshot() {
@@ -2341,6 +2491,7 @@
       }
     });
     if (document.getElementById("panel-watch")) renderWatch(null);
+    if (document.getElementById("panel-portfolio")) renderPortfolio();
     if (document.getElementById("radarList")) renderRadar(null);
     renderAlertBell();
     // seed rules UI if panel open later

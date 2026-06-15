@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import aiosqlite
 
@@ -119,6 +120,42 @@ async def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_alerts_symbol ON alerts(symbol, triggered_at DESC);
             CREATE INDEX IF NOT EXISTS idx_alerts_triggered ON alerts(triggered_at DESC);
+
+            -- Portfolio / Paper Trading Journal (server-persisted, survives refresh; one open paper position per symbol)
+            CREATE TABLE IF NOT EXISTS portfolio_positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL UNIQUE,
+                market TEXT,
+                side TEXT DEFAULT 'long',
+                qty REAL NOT NULL,
+                entry_price REAL NOT NULL,
+                entry_score REAL,
+                entry_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                notes TEXT,
+                sl REAL,
+                target REAL,
+                updated_at TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_portfolio_symbol ON portfolio_positions(symbol);
+
+            CREATE TABLE IF NOT EXISTS trade_journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                action TEXT NOT NULL,  -- 'buy' | 'close'
+                price REAL,
+                qty REAL,
+                score_at_time REAL,
+                notes TEXT,
+                outcome_pnl REAL,  -- realized P&L on close (positive = profit)
+                outcome_at TEXT,
+                linked_position_id INTEGER,
+                thesis_pos TEXT,   -- snapshot of positives at log/close for insight
+                thesis_neg TEXT,   -- snapshot of negatives/risks
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_journal_symbol ON trade_journal(symbol, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_journal_linked ON trade_journal(linked_position_id);
             """
         )
         cur = await db.execute("PRAGMA table_info(earnings)")
@@ -761,105 +798,168 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
             match = True
             reasons = []
 
-            if min_bs is not None:
-                if bs is None or float(bs) < float(min_bs):
-                    match = False
-                else:
-                    reasons.append(f"buy_score>={min_bs}")
+# ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS (v1) ============
 
-            if min_rvol is not None and match:
-                if rvol is None or float(rvol) < float(min_rvol):
-                    match = False
-                else:
-                    reasons.append(f"rvol>={min_rvol}")
-
-            has_inv_hit = False
-            inv_name = None
-            inv_quality = None
-            # Check from row metrics (preferred - from analyze/smart_money)
-            sm = (row.get("metrics") or {}).get("smart_money") or {}
-            if sm and sm.get("hits"):
-                hits = sm.get("hits") or []
-                if hits:
-                    primary = hits[0]
-                    inv_name = primary.get("name")
-                    inv_quality = primary.get("quality")
-                    kind = primary.get("kind")
-                    if not investor_types or kind in investor_types:
-                        has_inv_hit = True
-            # Also from investor_events in snapshot (Form4 / insider crawler)
-            if not has_inv_hit and sym in investor_map:
-                for ev in investor_map[sym]:
-                    inv_name = ev.get("investor_name") or inv_name
-                    inv_quality = ev.get("investor_quality") or inv_quality
-                    if not investor_types or any(t in (ev.get("event_type") or "") for t in investor_types):
-                        has_inv_hit = True
-                        break
-
-            if has_investor and match:
-                if not has_inv_hit:
-                    match = False
-                else:
-                    reasons.append("has_investor")
-
-            # Earnings proximity (use earnings in snapshot if present, or row)
-            if earnings_days is not None and match:
-                # earnings may be in aug_earnings or separate
-                earn_days = row.get("days_until")
-                if earn_days is None and data:
-                    for e in (data.get("earnings") or []):
-                        if e.get("symbol") == sym:
-                            earn_days = e.get("days_until")
-                            break
-                if earn_days is None or int(earn_days) > int(earnings_days):
-                    match = False
-                else:
-                    reasons.append(f"earnings<={earnings_days}d")
-
-            if match:
-                # Build rich message reusing smart_money style text
-                msg_parts = reasons or ["rule matched"]
-                msg = f"Rule {rule_type}: {', '.join(msg_parts)}"
-                if has_inv_hit and inv_name:
-                    q = f" ({inv_quality})" if inv_quality else ""
-                    # Match the exact style used in radar/thesis: "🚨 Investor: Name (Quality)"
-                    rich = f"🚨 Investor: {inv_name}{q}"
-                    if rich not in msg:
-                        msg = f"{msg} — {rich}"
-                elif sm.get("primary_alert"):
-                    msg = f"{msg} — {sm['primary_alert']}"
-
-                trig = {
-                    "symbol": sym,
-                    "rule_id": rule["id"],
-                    "rule_type": rule_type,
-                    "message": msg,
-                    "buy_score": float(bs) if bs is not None else sc,
-                    "details": {
-                        "conditions": cond,
-                        "investor_name": inv_name,
-                        "investor_quality": inv_quality,
-                        "has_investor": has_inv_hit,
-                        "rvol": rvol,
-                        "score": sc,
-                        "primary_alert": sm.get("primary_alert"),
-                    },
-                    "ts": utc_now(),
-                }
-                triggered.append(trig)
-                seen_trigger_keys.add(key)
-
-    return triggered
+async def upsert_portfolio_position(
+    symbol: str,
+    market: str,
+    qty: float,
+    entry_price: float,
+    entry_score: float | None = None,
+    notes: str | None = None,
+    sl: float | None = None,
+    target: float | None = None,
+) -> int:
+    """Insert or replace open paper position (one per symbol). Returns position id."""
+    symbol = symbol.upper()
+    now = utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        # Delete any prior for this sym to enforce one open paper pos
+        await db.execute("DELETE FROM portfolio_positions WHERE symbol = ?", (symbol,))
+        cur = await db.execute(
+            """
+            INSERT INTO portfolio_positions
+                (symbol, market, side, qty, entry_price, entry_score, entry_at, notes, sl, target, updated_at)
+            VALUES (?, ?, 'long', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                symbol,
+                market or "us",
+                float(qty),
+                float(entry_price),
+                entry_score,
+                now,
+                notes,
+                sl,
+                target,
+                now,
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid or 0
 
 
-async def get_or_create_default_rules() -> None:
-    """Seed a couple of useful default rules on first run if none exist (idempotent-ish)."""
-    rules = await list_alert_rules()
-    if rules:
-        return
-    # Example high-conviction: buy_score>65 AND rvol>2 (user example in request)
-    await add_alert_rule("score", {"min_buy_score": 65, "min_rvol": 2.0})
-    # Smart money + high score (exact investor moves)
-    await add_alert_rule("smart_money", {"min_buy_score": 55, "has_investor": True})
-    # Pre-earnings high conviction
-    await add_alert_rule("earnings", {"min_buy_score": 60, "earnings_within_days": 3})
+async def update_portfolio_position(
+    symbol: str,
+    notes: str | None = None,
+    sl: float | None = None,
+    target: float | None = None,
+) -> bool:
+    """Update notes / SL / target on an open position."""
+    symbol = symbol.upper()
+    now = utc_now()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            UPDATE portfolio_positions
+            SET notes = COALESCE(?, notes),
+                sl = COALESCE(?, sl),
+                target = COALESCE(?, target),
+                updated_at = ?
+            WHERE symbol = ?
+            """,
+            (notes, sl, target, now, symbol),
+        )
+        await db.commit()
+        return True
+
+
+async def list_portfolio() -> list[dict]:
+    """Return current open paper positions (for /api/portfolio)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM portfolio_positions ORDER BY updated_at DESC, created_at DESC"
+        )
+        rows = []
+        for r in await cur.fetchall():
+            d = dict(r)
+            rows.append(d)
+        return rows
+
+
+async def delete_portfolio_position(symbol: str) -> bool:
+    """Remove a position (used on close)."""
+    symbol = symbol.upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM portfolio_positions WHERE symbol = ?", (symbol,))
+        await db.commit()
+        return True
+
+
+async def record_trade_journal(
+    symbol: str,
+    action: str,
+    price: float | None = None,
+    qty: float | None = None,
+    score_at_time: float | None = None,
+    notes: str | None = None,
+    outcome_pnl: float | None = None,
+    linked_position_id: int | None = None,
+    thesis_pos: str | None = None,
+    thesis_neg: str | None = None,
+) -> int:
+    """Log a buy or close action to journal. Returns journal id."""
+    symbol = symbol.upper()
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """
+            INSERT INTO trade_journal
+                (symbol, action, price, qty, score_at_time, notes, outcome_pnl, outcome_at, linked_position_id, thesis_pos, thesis_neg)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                symbol,
+                action,
+                price,
+                qty,
+                score_at_time,
+                notes,
+                outcome_pnl,
+                utc_now() if outcome_pnl is not None or action == "close" else None,
+                linked_position_id,
+                thesis_pos,
+                thesis_neg,
+            ),
+        )
+        await db.commit()
+        return cur.lastrowid or 0
+
+
+async def list_journal(limit: int = 100) -> list[dict]:
+    """Return recent journal entries (newest first)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT * FROM trade_journal ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_performance_stats() -> dict[str, Any]:
+    """Compute winrate / total realized PnL from journal closes. Open PnL simulated in API layer using live state."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT outcome_pnl FROM trade_journal WHERE action = 'close' AND outcome_pnl IS NOT NULL"
+        )
+        pnls = [float(r[0]) for r in await cur.fetchall() if r[0] is not None]
+        closed = len(pnls)
+        wins = sum(1 for p in pnls if p > 0)
+        winrate = round((wins / closed * 100), 1) if closed else 0.0
+        total_pnl = round(sum(pnls), 2)
+        open_count = 0
+        cur2 = await db.execute("SELECT COUNT(*) FROM portfolio_positions")
+        open_count = (await cur2.fetchone())[0] or 0
+        return {
+            "closed_trades": closed,
+            "open_positions": open_count,
+            "winrate": winrate,
+            "total_realized_pnl": total_pnl,
+            "wins": wins,
+            "losses": closed - wins,
+        }
+
+
