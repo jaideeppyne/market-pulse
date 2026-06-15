@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 
 def sector_bucket(sector: str | None, industry: str | None, market: str) -> str:
     s = (sector or "").lower()

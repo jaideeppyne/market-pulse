@@ -27,7 +27,6 @@ def _compute_scores(
     Returns (buy_score, quality_score, extension_penalty, top_weighted_hits, enriched_hits).
     """
     positive = [x for x in hits if x.points > 0]
-    hit_ids = {x.id for x in hits}
 
     enriched: list[dict] = []
     quality_w = 0.0

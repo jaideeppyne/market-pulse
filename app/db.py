@@ -786,7 +786,43 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
         if s:
             investor_map.setdefault(s, []).append(ev)
 
-    triggered = []
+    earnings_map: dict[str, dict] = {}
+    for item in (data or {}).get("earnings") or []:
+        s = (item.get("symbol") or "").upper()
+        if s:
+            earnings_map[s] = item
+
+    def as_float(value):
+        if value is None or value == "":
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    def display(value) -> str:
+        return str(value)
+
+    def smart_money_hits(row: dict, sym: str) -> list:
+        metrics = row.get("metrics") or {}
+        smart_money = metrics.get("smart_money") or row.get("smart_money") or {}
+        hits = smart_money.get("hits") if isinstance(smart_money, dict) else smart_money
+        if hits is None:
+            hits = []
+        if isinstance(hits, (str, dict)):
+            hits = [hits]
+        return list(hits) + investor_map.get(sym, [])
+
+    def event_matches_type(event: dict, types: list[str]) -> bool:
+        if not types:
+            return True
+        haystack = " ".join(
+            str(event.get(k, ""))
+            for k in ("event_type", "investor_quality", "investor_name", "actor_role", "details")
+        ).lower()
+        return any(str(t).lower() in haystack for t in types)
+
+    triggered: list[dict] = []
     seen_trigger_keys = set()  # avoid dup per (symbol,rule) in one eval pass
 
     for rule in enabled_rules:
@@ -797,6 +833,8 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
         earnings_days = cond.get("earnings_within_days") or cond.get("earnings_in_days")
         investor_types = cond.get("investor_types") or []  # e.g. ["india_legend","politician"]
         rule_type = rule.get("rule_type", "custom")
+        if rule_type in {"smart_money", "investor"}:
+            has_investor = True
 
         for row in candidates:
             sym = (row.get("symbol") or "").upper()
@@ -811,7 +849,76 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
             sc = _get_metric(row, "score")
 
             match = True
-            reasons = []
+            reasons: list[str] = []
+
+            if min_bs is not None:
+                bs_num = as_float(bs)
+                min_bs_num = as_float(min_bs)
+                if bs_num is None or min_bs_num is None or bs_num < min_bs_num:
+                    match = False
+                else:
+                    reasons.append(f"buy score {display(bs)} >= {display(min_bs)}")
+
+            if min_rvol is not None:
+                rvol_num = as_float(rvol)
+                min_rvol_num = as_float(min_rvol)
+                if rvol_num is None or min_rvol_num is None or rvol_num < min_rvol_num:
+                    match = False
+                else:
+                    reasons.append(f"RVOL {display(rvol)} >= {display(min_rvol)}")
+
+            matching_investors = smart_money_hits(row, sym)
+            if has_investor:
+                matching_investors = [
+                    ev for ev in matching_investors
+                    if not isinstance(ev, dict) or event_matches_type(ev, investor_types)
+                ]
+                if not matching_investors:
+                    match = False
+                else:
+                    reasons.append("smart money / investor activity")
+
+            matched_earnings = None
+            if earnings_days is not None:
+                matched_earnings = row.get("earnings") or earnings_map.get(sym)
+                days_until = as_float((matched_earnings or {}).get("days_until"))
+                max_days = as_float(earnings_days)
+                if days_until is None or max_days is None or days_until > max_days:
+                    match = False
+                else:
+                    reasons.append(f"earnings within {display(earnings_days)} days")
+
+            if not match:
+                continue
+
+            if not reasons:
+                reasons.append(f"{rule_type} rule matched")
+
+            details = {
+                "score": sc,
+                "buy_score": bs,
+                "rvol": rvol,
+                "reasons": reasons,
+            }
+            if matching_investors:
+                details["investor_events"] = matching_investors[:5]
+            if matched_earnings:
+                details["earnings"] = matched_earnings
+
+            triggered.append(
+                {
+                    "symbol": sym,
+                    "rule_id": rule["id"],
+                    "rule_type": rule_type,
+                    "message": f"🚨 {sym}: {'; '.join(reasons)}",
+                    "buy_score": bs,
+                    "details": details,
+                }
+            )
+            seen_trigger_keys.add(key)
+
+    return triggered
+
 
 # ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS (v1) ============
 

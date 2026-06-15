@@ -16,10 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from app.config import load_config
 from app.db import (
     DB_PATH,
-    add_alert_rule,
     add_to_watchlist,
     db_file_size_mb,
-    delete_alert_rule,
     evaluate_rules_for_snapshot,
     get_or_create_default_rules,
     init_db,
@@ -28,10 +26,11 @@ from app.db import (
     list_watchlist,
     recent_alerts,
     recent_market_events,
-    recent_strong_snapshots,
+    recent_news,
     recent_strong_snapshots_with_outcomes,
     snapshots_for_symbol,
     upcoming_earnings,
+    update_alert_rule_last_triggered,
 )
 from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
@@ -482,7 +481,7 @@ async def get_regime() -> dict:
     """
     try:
         import yfinance as yf
-        from datetime import timedelta, datetime
+        from datetime import datetime
         vix_hist = yf.download("^VIX", period="10d", progress=False, auto_adjust=True)
         vix = float(vix_hist["Close"].iloc[-1]) if not vix_hist.empty else 20.0
         # Broad US trend via SPY 1m vs 20d ago; simple bias

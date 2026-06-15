@@ -209,7 +209,7 @@ def fetch_sp500_from_wikipedia() -> list[str]:
         syms = df[col].astype(str).str.replace(".", "-", regex=False).tolist()
         if len(syms) > 50:
             return syms
-    except Exception as e:
+    except Exception:
         # Common cause: missing lxml (add to requirements + recreate .venv)
         # or network / parser issues. Fall back silently to larger static list.
         pass

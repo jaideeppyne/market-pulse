@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pandas as pd
-
 from app.engine.context import ScanContext
 from app.engine.types import FactorHit
 from app.engine.factor_catalog import (  # noqa: F401 — re-export
@@ -18,7 +16,6 @@ from app.engine.indicators import (
     bollinger_bands,
     cci,
     cup_handle_score,
-    dma,
     ema,
     higher_lows,
     ma_alignment,
@@ -354,7 +351,6 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
         for e in events[:12]:
             et = e.get("event_type", "")
             actor = e.get("actor_name") or ""
-            role = e.get("actor_role") or ""
             amount = e.get("amount")
             suffix = f" ({actor})" if actor else ""
             amt = f" ~${amount/1_000_000:.1f}M" if isinstance(amount, (int, float)) and amount >= 1_000_000 else ""
