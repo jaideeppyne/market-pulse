@@ -89,6 +89,11 @@ class ScannerLoop:
                     market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "us")
                     pairs.append((sym, market))
                     seen_pairs.add(sym)
+                # Prioritize India chunks first in batching for better live coverage of India stocks
+                # (helps prevent India tab being stuck on just RELIANCE or few names while US dominates)
+                india_p = [p for p in pairs if p[1] == "india"]
+                us_p = [p for p in pairs if p[1] != "india"]
+                pairs = india_p + us_p
                 all_results: list[dict] = []
                 batch_total = max(1, (len(pairs) + batch_size - 1) // batch_size)
                 batch_index = 0
@@ -110,17 +115,20 @@ class ScannerLoop:
                     batch_results: list[dict] = []
                     for mkt, syms in by_market.items():
                         if syms:
-                            res = await scan_symbols(
-                                syms,
-                                mkt,
-                                self._news_counts,
-                                weights,
-                                earn_map,
-                                news_titles,
-                                events_by_symbol,
-                            )
-                            batch_results.extend(res)
-                            all_results.extend(res)
+                            try:
+                                res = await scan_symbols(
+                                    syms,
+                                    mkt,
+                                    self._news_counts,
+                                    weights,
+                                    earn_map,
+                                    news_titles,
+                                    events_by_symbol,
+                                )
+                                batch_results.extend(res)
+                                all_results.extend(res)
+                            except Exception:
+                                logger.warning("Price batch error for %s market (skipped for resilience)", mkt)
                     # Live UI update after each batch (re-sort hot list immediately)
                     await self.state.update_scan(
                         batch_results,
@@ -326,7 +334,10 @@ class ScannerLoop:
         address India focus and empty India list issues). Runs separate from main price batches so
         India names get scored/inserted into state even if global hot is US dominated or scan partial.
         Uses small batches + the same engine. Skips if no India or during heavy load.
+        Uses random sample each time to diversify which India names get attempted (prevents getting stuck
+        only on early list items like RELIANCE.NS while others in chunk fail yf).
         """
+        import random
         interval = self.cfg.get("scanner", {}).get("india_quick_interval_sec", 90)
         chunk_size = 30  # small to be resilient and not overload yf
         while self._running:
@@ -335,8 +346,9 @@ class ScannerLoop:
                 india_syms = self.state.universe.get("india", [])
                 if not india_syms:
                     continue
-                # rotating or first chunk for coverage
-                chunk = india_syms[:chunk_size]
+                # random sample each cycle to hit different India names over time (diversify beyond Reliance)
+                sample_size = min(chunk_size, len(india_syms))
+                chunk = random.sample(india_syms, sample_size)
                 async with self.state.lock:
                     earn_map = dict(self.state.earnings_by_symbol)
                     news_titles = dict(self.state.news_titles_by_symbol)
