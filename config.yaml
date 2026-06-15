@@ -34,7 +34,7 @@ scanner:
   batch_size: 40
   batch_delay_sec: 0.35
   # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50)
-  hot_score_threshold: 38
+  hot_score_threshold: 25
   # How many top movers to broadcast (per market + global cap)
   top_n: 200
   # Official insider/CEO/promoter scanner interval (15-30s target for fastest detection per review)
