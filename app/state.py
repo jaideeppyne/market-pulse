@@ -253,8 +253,14 @@ class AppState:
     async def update_candidates(self, candidates: list[dict[str, Any]]) -> None:
         async with self.lock:
             self.candidates = candidates[:300]
+            result_count = len(candidates or [])
+            now = datetime.now(timezone.utc).isoformat()
             self.stats["candidate_count"] = len(self.candidates)
-            self.stats["last_light_scan"] = datetime.now(timezone.utc).isoformat()
+            self.stats["last_light_scan"] = now
+            self.stats["last_light_scan_result_count"] = result_count
+            self.stats["last_light_scan_empty"] = result_count == 0
+            if result_count == 0:
+                self.stats["last_empty_light_scan"] = now
             self.live_tick += 1
             self.stats["live_tick"] = self.live_tick
         self.broadcast_event.set()
