@@ -37,6 +37,8 @@ scanner:
   hot_score_threshold: 38
   # How many top movers to broadcast (per market + global cap)
   top_n: 200
+  # Official insider/CEO/promoter scanner interval (15-30s target for fastest detection per review)
+  insider_scan_interval_sec: 30
 
   # Discovery / "Scan More" on-demand (triggered from UI button) can be more aggressive
   # because it is user-initiated and limited per call (see /api/discover).
@@ -136,6 +138,84 @@ news:
     - name: "PR Newswire - Latest"
       url: "https://www.prnewswire.com/rss/all-news-releases-from-PRNewswire.rss"
       market: "global"
+
+    # India-focused additional websites for live scanning (increased for all India stocks coverage)
+    - name: "Moneycontrol Corporate"
+      url: "https://www.moneycontrol.com/rss/corporate.xml"
+      market: "india"
+    - name: "Economic Times Stocks"
+      url: "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"
+      market: "india"
+    - name: "Business Standard India"
+      url: "https://www.business-standard.com/rss/home_page-top_stories.rss"
+      market: "india"
+    - name: "Livemint Markets"
+      url: "https://www.livemint.com/rss/markets"
+      market: "india"
+    - name: "Financial Express Markets"
+      url: "https://www.financialexpress.com/market/rss/"
+      market: "india"
+    - name: "Business Today India"
+      url: "https://www.businesstoday.in/rss/rssstory.jsp?sid=1"
+      market: "india"
+    - name: "Google News India - FII DII Flows"
+      url: "https://news.google.com/rss/search?q=FII+OR+DII+OR+%22foreign+institutional%22+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    - name: "Google News India - Block Deals QIP"
+      url: "https://news.google.com/rss/search?q=%22block+deal%22+OR+QIP+OR+promoter+OR+%22bulk+deal%22+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    - name: "Google News India - Results Earnings"
+      url: "https://news.google.com/rss/search?q=%22Q1+results%22+OR+%22Q2+results%22+OR+%22Q3+results%22+OR+%22Q4+results%22+OR+earnings+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    - name: "NSE India Announcements RSS"
+      url: "https://www.nseindia.com/api/announcements"
+      market: "india"  # Note: may need parsing, falls back to broad
+    - name: "BSE India News"
+      url: "https://www.bseindia.com/rss/rss.xml"
+      market: "india"
+    - name: "Reuters India Business"
+      url: "https://feeds.reuters.com/reuters/INbusinessNews"
+      market: "india"
+    - name: "CNBC TV18 India"
+      url: "https://www.cnbctv18.com/rss"
+      market: "india"
+    # Even more India websites for live info fetching (earnings, FII, deals, results, corporate news)
+    - name: "Moneycontrol Latest"
+      url: "https://www.moneycontrol.com/rss/latestnews.xml"
+      market: "india"
+    - name: "Economic Times Markets"
+      url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
+      market: "india"
+    - name: "Business Standard Markets"
+      url: "https://www.business-standard.com/rss/markets-106.rss"
+      market: "india"
+    - name: "Livemint Latest"
+      url: "https://www.livemint.com/rss/news"
+      market: "india"
+    - name: "Financial Express Corporate"
+      url: "https://www.financialexpress.com/industry/rss/"
+      market: "india"
+    - name: "Business Today Stocks"
+      url: "https://www.businesstoday.in/rss/stocks"
+      market: "india"
+    - name: "CNBC TV18 Markets"
+      url: "https://www.cnbctv18.com/rss/markets"
+      market: "india"
+    - name: "Google News India - All Catalysts"
+      url: "https://news.google.com/rss/search?q=India+stocks+OR+NSE+OR+BSE+earnings+OR+results+OR+FII+OR+block+deal+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      market: "india"
+    - name: "Reuters India Markets"
+      url: "https://feeds.reuters.com/reuters/INtopNews"
+      market: "india"
+    - name: "BSE Announcements"
+      url: "https://www.bseindia.com/rss/rssannounce.xml"
+      market: "india"
+    - name: "NSE India Market Update"
+      url: "https://www.nseindia.com/api/marketStatus"
+      market: "india"  # Note: API, parser handles as text if RSS-like
+    - name: "Moneycontrol FII DII"
+      url: "https://www.moneycontrol.com/rss/fiidii.xml"
+      market: "india"
 
 signals:
   # buy_score = entry-heavy (next buy). quality_score = all factors.

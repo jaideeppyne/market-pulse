@@ -20,6 +20,7 @@ class ScanContext:
     earnings: dict[str, Any] | None = None
     news_count: int = 0
     news_titles: list[str] = field(default_factory=list)
+    market_events: list[dict[str, Any]] = field(default_factory=list)
     calendar: dict[str, Any] | None = None
 
     # computed

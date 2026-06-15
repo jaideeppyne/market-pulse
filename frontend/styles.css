@@ -581,7 +581,9 @@ body.modal-open { overflow: hidden; }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.85rem;
+  cursor: pointer;
 }
+.guide-card:hover { background: rgba(56,189,248,0.05); }
 .guide-card h3 { margin: 0 0 0.35rem; font-size: 0.9rem; color: var(--accent); }
 .guide-card p { margin: 0; font-size: 0.82rem; color: var(--muted); }
 
@@ -613,8 +615,9 @@ body.modal-open { overflow: hidden; }
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.55rem 0.75rem;
-  cursor: default;
+  cursor: pointer;
 }
+.cycle-card:hover { background: rgba(56,189,248,0.06); }
 .cycle-card[data-cycle="growth"] { border-color: rgba(56, 189, 248, 0.35); }
 .cycle-card[data-cycle="cyclical"] { border-color: rgba(245, 158, 11, 0.35); }
 .cycle-card[data-cycle="defensive"] { border-color: rgba(34, 197, 94, 0.35); }

@@ -197,6 +197,113 @@ def range_compression(close: pd.Series, days: int = 20) -> bool:
     return rng < 0.08
 
 
+# Nitpicking every small technical detail for full accuracy
+def bollinger_bands(close: pd.Series, period: int = 20, std: float = 2.0) -> dict:
+    if len(close) < period:
+        return {"signal": None}
+    sma = close.rolling(period).mean()
+    rstd = close.rolling(period).std()
+    upper = sma + (std * rstd)
+    lower = sma - (std * rstd)
+    c = close.iloc[-1]
+    bb_width = (upper.iloc[-1] - lower.iloc[-1]) / sma.iloc[-1] if sma.iloc[-1] else 0
+    signal = "neutral"
+    if c > upper.iloc[-1]:
+        signal = "above_upper"
+    elif c < lower.iloc[-1]:
+        signal = "below_lower"
+    elif bb_width < 0.1:  # squeeze - low vol opportunity
+        signal = "squeeze"
+    return {"upper": round(upper.iloc[-1], 2), "lower": round(lower.iloc[-1], 2), "width_pct": round(bb_width*100, 1), "signal": signal}
+
+def stochastic_oscillator(high: pd.Series, low: pd.Series, close: pd.Series, k_period: int = 14, d_period: int = 3) -> dict:
+    if len(close) < k_period + d_period:
+        return {"signal": None}
+    low_min = low.rolling(k_period).min()
+    high_max = high.rolling(k_period).max()
+    k = 100 * (close - low_min) / (high_max - low_min)
+    d = k.rolling(d_period).mean()
+    k_val = k.iloc[-1]
+    d_val = d.iloc[-1]
+    signal = "neutral"
+    if k_val > 80 and d_val > 80:
+        signal = "overbought"
+    elif k_val < 20 and d_val < 20:
+        signal = "oversold"
+    elif k_val > d_val and k.iloc[-2] <= d.iloc[-2]:
+        signal = "bull_cross"
+    return {"k": round(k_val, 1), "d": round(d_val, 1), "signal": signal}
+
+def cci(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 20) -> dict:
+    if len(close) < period:
+        return {"signal": None}
+    tp = (high + low + close) / 3
+    sma = tp.rolling(period).mean()
+    mad = (tp - sma).abs().rolling(period).mean()
+    cci_val = (tp - sma) / (0.015 * mad)
+    val = cci_val.iloc[-1]
+    signal = "neutral"
+    if val > 100:
+        signal = "overbought"
+    elif val < -100:
+        signal = "oversold"
+    return {"cci": round(val, 1), "signal": signal}
+
+def adx(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> dict:
+    if len(close) < period + 1:
+        return {"signal": None}
+    plus_dm = high.diff()
+    minus_dm = -low.diff()
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    adx_val = dx.rolling(period).mean().iloc[-1]
+    signal = "neutral"
+    if adx_val > 25:
+        signal = "trending"
+    return {"adx": round(adx_val, 1), "signal": signal}
+
+def atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int = 14) -> float | None:
+    if len(close) < period:
+        return None
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    return float(tr.rolling(period).mean().iloc[-1])
+
+def obv(close: pd.Series, volume: pd.Series) -> dict:
+    if len(close) < 2:
+        return {"signal": None}
+    obv_val = (np.sign(close.diff()) * volume).cumsum().iloc[-1]
+    # simple signal: rising obv with price = accumulation
+    recent_obv = (np.sign(close.diff().tail(5)) * volume.tail(5)).sum()
+    signal = "neutral"
+    if recent_obv > 0 and close.iloc[-1] > close.iloc[-5]:
+        signal = "accumulation"
+    return {"obv": round(obv_val, 0), "signal": signal}
+
+def ma_slope(close: pd.Series, period: int = 20) -> float | None:
+    if len(close) < period:
+        return None
+    ma = close.rolling(period).mean()
+    if len(ma) < 2:
+        return None
+    return float((ma.iloc[-1] - ma.iloc[-2]) / ma.iloc[-2] * 100) if ma.iloc[-2] else None
+
+def volatility(close: pd.Series, period: int = 20) -> float | None:
+    if len(close) < period:
+        return None
+    returns = close.pct_change()
+    return float(returns.rolling(period).std().iloc[-1] * np.sqrt(252) * 100)  # annualized % 
+
+def rate_of_change(close: pd.Series, period: int = 10) -> float | None:
+    if len(close) < period + 1:
+        return None
+    return float((close.iloc[-1] - close.iloc[-period-1]) / close.iloc[-period-1] * 100)
+
+
 def near_ma_pullback(close: pd.Series, ma_days: int = 50, band: float = 0.03) -> bool:
     if len(close) < ma_days + 5:
         return False

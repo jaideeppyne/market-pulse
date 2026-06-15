@@ -28,46 +28,50 @@ BUY_CONTEXT = re.compile(
 )
 
 # India: top tracked retail / PMS / MF legends (user-requested + widely followed)
+# Each has 'quality' for "how good": short description of edge/track record. Politicians/relatives included for attention premium.
 INDIA_LEGENDS: list[dict[str, Any]] = [
-    {"id": "madhusudan_kela", "name": "Madhusudan Kela", "rx": r"madhusudan\s+kela|mk\s+kela|kela\s+fund"},
-    {"id": "ashish_kacholia", "name": "Ashish Kacholia", "rx": r"ashish\s+kacholia|kacholia"},
-    {"id": "vijay_kedia", "name": "Vijay Kedia", "rx": r"vijay\s+kedia"},
-    {"id": "raakesh_jhunjhunwala", "name": "Raakesh Jhunjhunwala", "rx": r"raakesh\s+jhunjhunwala|rakesh\s+jhunjhunwala|jhunjhunwala"},
-    {"id": "radhakishan_damani", "name": "Radhakishan Damani", "rx": r"radhakishan\s+damani|rk\s+damani|damani"},
-    {"id": "dolly_khanna", "name": "Dolly Khanna", "rx": r"dolly\s+khanna|rajiv\s+khanna"},
-    {"id": "porinju_veliyath", "name": "Porinju Veliyath", "rx": r"porinju|veliyath"},
-    {"id": "shankar_sharma", "name": "Shankar Sharma", "rx": r"shankar\s+sharma|first\s+dubai"},
-    {"id": "nemish_shah", "name": "Nemish Shah", "rx": r"nemish\s+shah|enam"},
-    {"id": "sunil_singhania", "name": "Sunil Singhania", "rx": r"sunil\s+singhania|abakkus"},
-    {"id": "kenneth_andrade", "name": "Kenneth Andrade", "rx": r"kenneth\s+andrade|old\s+bridge"},
-    {"id": "saurabh_mukherjea", "name": "Saurabh Mukherjea", "rx": r"saurabh\s+mukherjea|marcellus"},
-    {"id": "amitabh_dayal", "name": "Amitabh Dayal", "rx": r"amitabh\s+dayal"},
-    {"id": "ramdeo_agrawal", "name": "Ramdeo Agrawal", "rx": r"ramdeo\s+agrawal|motilal\s+oswal"},
-    {"id": "amit_jain", "name": "Amit Jain (Greenshoe)", "rx": r"amit\s+jain.*greenshoe|greenshoe"},
-    {"id": "harsh_gupta", "name": "Harsh Gupta", "rx": r"harsh\s+gupta.*marcellus"},
-    {"id": "dalal_street", "name": "Dalal Street investor", "rx": r"dalal\s+street.*(buy|stake|accumulat)", "require_buy": False},
+    {"id": "madhusudan_kela", "name": "Madhusudan Kela", "rx": r"madhusudan\s+kela|mk\s+kela|kela\s+fund", "quality": "Legendary India investor (strong midcap track record, high conviction picks)"},
+    {"id": "ashish_kacholia", "name": "Ashish Kacholia", "rx": r"ashish\s+kacholia|kacholia", "quality": "Top PMS legend (consistent alpha in small/midcaps over decades)"},
+    {"id": "vijay_kedia", "name": "Vijay Kedia", "rx": r"vijay\s+kedia", "quality": "Iconic value investor (long-term multibagger track record)"},
+    {"id": "raakesh_jhunjhunwala", "name": "Raakesh Jhunjhunwala (Late)", "rx": r"raakesh\s+jhunjhunwala|rakesh\s+jhunjhunwala|jhunjhunwala", "quality": "India's 'Warren Buffett' (legendary returns, market-moving influence)"},
+    {"id": "radhakishan_damani", "name": "Radhakishan Damani", "rx": r"radhakishan\s+damani|rk\s+damani|damani", "quality": "DMart founder & value legend (exceptional long-term compounding)"},
+    {"id": "dolly_khanna", "name": "Dolly Khanna", "rx": r"dolly\s+khanna|rajiv\s+khanna", "quality": "Sharp small-cap picker (high returns from underfollowed names)"},
+    {"id": "porinju_veliyath", "name": "Porinju Veliyath", "rx": r"porinju|veliyath", "quality": "Aggressive value investor (known for early multibaggers)"},
+    {"id": "shankar_sharma", "name": "Shankar Sharma", "rx": r"shankar\s+sharma|first\s+dubai", "quality": "Global macro thinker & activist (strong India calls)"},
+    {"id": "nemish_shah", "name": "Nemish Shah", "rx": r"nemish\s+shah|enam", "quality": "Enam Securities co-founder (deep value, long-term edge)"},
+    {"id": "sunil_singhania", "name": "Sunil Singhania", "rx": r"sunil\s+singhania|abakkus", "quality": "Former UTI star, now Abakkus (excellent smallcap performance)"},
+    {"id": "kenneth_andrade", "name": "Kenneth Andrade", "rx": r"kenneth\s+andrade|old\s+bridge", "quality": "Old Bridge Capital (contrarian, high conviction India bets)"},
+    {"id": "saurabh_mukherjea", "name": "Saurabh Mukherjea", "rx": r"saurabh\s+mukherjea|marcellus", "quality": "Marcellus founder (quality compounders focus, strong research edge)"},
+    {"id": "amitabh_dayal", "name": "Amitabh Dayal", "rx": r"amitabh\s+dayal", "quality": "Experienced market veteran (sharp timing & stock picking)"},
+    {"id": "ramdeo_agrawal", "name": "Ramdeo Agrawal", "rx": r"ramdeo\s+agrawal|motilal\s+oswal", "quality": "Motilal Oswal co-founder (pioneer in Indian broking & investing)"},
+    {"id": "amit_jain", "name": "Amit Jain (Greenshoe)", "rx": r"amit\s+jain.*greenshoe|greenshoe", "quality": "Greenshoe Capital (focused activist/value approach)"},
+    {"id": "harsh_gupta", "name": "Harsh Gupta", "rx": r"harsh\s+gupta.*marcellus", "quality": "Marcellus portfolio manager (strong quality investing results)"},
+    {"id": "dalal_street", "name": "Dalal Street investor", "rx": r"dalal\s+street.*(buy|stake|accumulat)", "require_buy": False, "quality": "Generic street smart money (often signals early moves)"},
+    # Politicians & relatives (India) - high attention, market moving disclosures
+    {"id": "nitin_gadkari", "name": "Nitin Gadkari (Minister/relative)", "rx": r"gadkari|nit in\s+gadkari", "quality": "High-profile politician (infrastructure focus, disclosures move infra stocks)"},
+    {"id": "politician_relative_india", "name": "Indian Politician Relative", "rx": r"(son|daughter|wife|brother|sister)\s+of\s+(mp|minister|mla).* (buy|stake|share)", "require_buy": False, "quality": "Politician family (attention premium, potential influence edge)"},
 ]
 
 # US: whales, activists, top funds
 US_LEGENDS: list[dict[str, Any]] = [
-    {"id": "warren_buffett", "name": "Warren Buffett", "rx": r"warren\s+buffett|berkshire\s+hathaway|berkshire"},
-    {"id": "bill_ackman", "name": "Bill Ackman", "rx": r"bill\s+ackman|pershing\s+square"},
-    {"id": "carl_icahn", "name": "Carl Icahn", "rx": r"carl\s+icahn|icahn\s+enterprises"},
-    {"id": "ray_dalio", "name": "Ray Dalio", "rx": r"ray\s+dalio|bridgewater"},
-    {"id": "cathie_wood", "name": "Cathie Wood", "rx": r"cathie\s+wood|ark\s+invest|arkk"},
-    {"id": "stanley_druckenmiller", "name": "Stanley Druckenmiller", "rx": r"stanley\s+druckenmiller|druckenmiller"},
-    {"id": "david_tepper", "name": "David Tepper", "rx": r"david\s+tepper|appaloosa"},
-    {"id": "daniel_loeb", "name": "Daniel Loeb", "rx": r"daniel\s+loeb|third\s+point"},
-    {"id": "seth_klarman", "name": "Seth Klarman", "rx": r"seth\s+klarman|baupost"},
-    {"id": "paul_tudor_jones", "name": "Paul Tudor Jones", "rx": r"paul\s+tudor\s+jones"},
-    {"id": "michael_burry", "name": "Michael Burry", "rx": r"michael\s+burry|scion\s+asset"},
-    {"id": "george_soros", "name": "George Soros", "rx": r"george\s+soros|soros\s+fund"},
-    {"id": "tiger_global", "name": "Tiger Global", "rx": r"tiger\s+global"},
-    {"id": "coatue", "name": "Coatue", "rx": r"coatue\s+management|coatue"},
-    {"id": "softbank", "name": "SoftBank / Masa", "rx": r"softbank|masayoshi\s+son"},
-    {"id": "blackrock", "name": "BlackRock", "rx": r"blackrock|larry\s+fink"},
-    {"id": "vanguard", "name": "Vanguard", "rx": r"vanguard\s+group"},
-    {"id": "fidelity", "name": "Fidelity", "rx": r"fidelity\s+investments|fidelity\s+management"},
+    {"id": "warren_buffett", "name": "Warren Buffett", "rx": r"warren\s+buffett|berkshire\s+hathaway|berkshire", "quality": "Legendary (historical CAGR outperformance, value investing pioneer)"},
+    {"id": "bill_ackman", "name": "Bill Ackman", "rx": r"bill\s+ackman|pershing\s+square", "quality": "Activist (high conviction, successful turnarounds like CP)"},
+    {"id": "carl_icahn", "name": "Carl Icahn", "rx": r"carl\s+icahn|icahn\s+enterprises", "quality": "Legendary activist (decades of alpha through activism)"},
+    {"id": "ray_dalio", "name": "Ray Dalio", "rx": r"ray\s+dalio|bridgewater", "quality": "Macro legend (Bridgewater principles, economic cycle expert)"},
+    {"id": "cathie_wood", "name": "Cathie Wood", "rx": r"cathie\s+wood|ark\s+invest|arkk", "quality": "Growth/Disruptive (strong in tech/innovation, volatile but high conviction)"},
+    {"id": "stanley_druckenmiller", "name": "Stanley Druckenmiller", "rx": r"stanley\s+druckenmiller|druckenmiller", "quality": "Macro master (Soros protege, excellent long-term returns)"},
+    {"id": "david_tepper", "name": "David Tepper", "rx": r"david\s+tepper|appaloosa", "quality": "Distressed/Activist (high returns from complex situations)"},
+    {"id": "daniel_loeb", "name": "Daniel Loeb", "rx": r"daniel\s+loeb|third\s+point", "quality": "Activist (sharp letters, good activist returns)"},
+    {"id": "seth_klarman", "name": "Seth Klarman", "rx": r"seth\s+klarman|baupost", "quality": "Value legend (Margin of Safety author, conservative alpha)"},
+    {"id": "paul_tudor_jones", "name": "Paul Tudor Jones", "rx": r"paul\s+tudor\s+jones", "quality": "Macro trader (legendary trader, risk management expert)"},
+    {"id": "michael_burry", "name": "Michael Burry", "rx": r"michael\s+burry|scion\s+asset", "quality": "Contrarian value (Big Short fame, deep value edge)"},
+    {"id": "george_soros", "name": "George Soros", "rx": r"george\s+soros|soros\s+fund", "quality": "Macro legend (broke the Bank of England, reflexivity theory)"},
+    {"id": "tiger_global", "name": "Tiger Global", "rx": r"tiger\s+global", "quality": "Growth investor (Chase Coleman, high growth tech focus)"},
+    {"id": "coatue", "name": "Coatue", "rx": r"coatue\s+management|coatue", "quality": "Tech/long-short (Philippe Laffont, strong tech returns)"},
+    {"id": "softbank", "name": "SoftBank / Masa", "rx": r"softbank|masayoshi\s+son", "quality": "Visionary (Masa Son, big bets on tech like Alibaba)"},
+    {"id": "blackrock", "name": "BlackRock", "rx": r"blackrock|larry\s+fink", "quality": "Institutional giant (Larry Fink, ESG/infra influence)"},
+    {"id": "vanguard", "name": "Vanguard", "rx": r"vanguard\s+group", "quality": "Passive giant (index leader, long-term holder)"},
+    {"id": "fidelity", "name": "Fidelity", "rx": r"fidelity\s+investments|fidelity\s+management", "quality": "Active fund (strong research, consistent performers)"},
 ]
 
 # Politicians & govt disclosures (high attention)
@@ -101,6 +105,7 @@ class SmartMoneyMatch:
     kind: str  # india_legend | us_legend | politician_us | politician_india | foreign_india
     tier: str  # S+ | S | A
     headline: str = ""
+    quality: str = ""  # e.g. "Legendary (historical CAGR outperformance, value investing pioneer)"
 
     def alert_text(self) -> str:
         prefix = {
@@ -110,7 +115,8 @@ class SmartMoneyMatch:
             "politician_india": "🏛️ POLITICIAN BUY",
             "foreign_india": "🌐 FOREIGN BUY",
         }.get(self.kind, "💰 SMART MONEY")
-        return f"{prefix}: {self.display_name}"
+        q = f" ({self.quality})" if self.quality else ""
+        return f"{prefix}: {self.display_name}{q}"
 
 
 @dataclass
@@ -133,6 +139,7 @@ class SmartMoneyIntel:
                     "kind": m.kind,
                     "tier": m.tier,
                     "headline": m.headline[:120],
+                    "quality": m.quality,
                 }
                 for m in self.matches[:8]
             ],
@@ -227,6 +234,7 @@ def analyze_smart_money(titles: list[str], *, market: str = "both") -> SmartMone
                 kind=kind,
                 tier=entry["tier"],
                 headline=t,
+                quality=entry.get("quality", ""),
             )
             intel.matches.append(m)
             intel.names.append(entry["name"])

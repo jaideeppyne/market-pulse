@@ -28,6 +28,7 @@ TIER_S_PLUS_IDS = frozenset({
     "smart_money_us_legend",
     "smart_money_politician",
     "smart_money_foreign_india",
+    "event_ceo_buy",
 })
 
 TIER_S_IDS = frozenset({
@@ -43,6 +44,10 @@ TIER_S_IDS = frozenset({
     "news_bulk_deal",
     "short_squeeze_setup",
     "news_short_squeeze",
+    "event_cfo_buy",
+    "event_director_buy",
+    "event_insider_buy",
+    "event_promoter_buy",
 })
 
 TIER_A_IDS = frozenset({
@@ -62,6 +67,7 @@ TIER_A_IDS = frozenset({
     "macd_bullish",
     "news_rate_cut",
     "news_bank_npa",
+    "event_bulk_block_deal",
     "india_defense_policy",
     "below_analyst_target",
     "room_to_run",

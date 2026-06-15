@@ -353,6 +353,81 @@
     }
   });
 
+  // Full Exhaustive Scan: Scans ALL India + US stocks with max data for full accuracy. Time no object.
+  const fullScanBtn = document.getElementById("fullScanBtn");
+  fullScanBtn?.addEventListener("click", async () => {
+    if (!fullScanBtn) return;
+    if (!confirm("Start FULL EXHAUSTIVE SCAN over the complete multi-source universe (all reachable US + India listed stocks)? This will take a VERY long time (hours) for maximum coverage and accuracy. It will find opportunities literally everywhere. Continue?")) return;
+    const orig = fullScanBtn.textContent;
+    fullScanBtn.textContent = "Scanning EVERYTHING (slow & thorough for full accuracy)…";
+    fullScanBtn.disabled = true;
+    try {
+      const res = await fetch("/api/full_exhaustive_scan", {method: "POST"});
+      const data = await res.json();
+      if (data && data.top_opportunities) {
+        alert(`Full exhaustive scan complete!\nScanned ${data.scanned} symbols.\nFound ${data.opportunities_found} opportunities.\nTop ones loaded into view. Use "Load Last Full Scan Results" to see them again.`);
+        // Inject top into hot for immediate view (tagged)
+        if (!lastData) lastData = {};
+        lastData.hot = lastData.hot || [];
+        const existing = new Set(lastData.hot.map(r => r.symbol));
+        for (const r of data.top_opportunities) {
+          if (!existing.has(r.symbol)) {
+            r.full_exhaustive = true;
+            lastData.hot.unshift(r);  // put at top
+          }
+        }
+        ingestHotRows(lastData);
+        renderHot(lastData);
+        const hint = document.getElementById("hotHint");
+        if (hint) hint.textContent = `Full Exhaustive Scan results injected (top opportunities from scanning EVERY stock). Tagged items are from the complete no-stone-unturned pass.`;
+      } else {
+        alert("Full scan started in background (will take hours). Use 'Load Last Full Scan Results' button later to view top opportunities from the complete universe.");
+      }
+    } catch (e) {
+      alert("Full exhaustive scan trigger failed: " + (e.message || e) + " (may still be running in background - check logs or reload later)");
+    } finally {
+      fullScanBtn.textContent = orig;
+      fullScanBtn.disabled = false;
+    }
+  });
+
+  const loadFullScanBtn = document.getElementById("loadFullScanBtn");
+  loadFullScanBtn?.addEventListener("click", async () => {
+    if (!loadFullScanBtn) return;
+    const orig = loadFullScanBtn.textContent;
+    loadFullScanBtn.textContent = "Loading last full scan...";
+    try {
+      const res = await fetch("/api/last_full_scan");
+      const data = await res.json();
+      if (data.status === "none") {
+        alert(data.message || "No full scan yet. Click the Exhaustive Scan button first.");
+      } else if (data.results && data.results.length) {
+        if (!lastData) lastData = {};
+        lastData.hot = lastData.hot || [];
+        const existing = new Set(lastData.hot.map(r => r.symbol));
+        let added = 0;
+        for (const r of data.results) {
+          if (!existing.has(r.symbol)) {
+            r.full_exhaustive = true;
+            lastData.hot.unshift(r);
+            added++;
+          }
+        }
+        ingestHotRows(lastData);
+        renderHot(lastData);
+        alert(`Loaded ${added} opportunities from last full exhaustive scan (scanned ${data.symbols_attempted}, ${data.high_quality_opportunities} high quality). These are ranked by the engine across the entire market.`);
+        const hint = document.getElementById("hotHint");
+        if (hint) hint.textContent = `Last Full Exhaustive Scan results (${data.timestamp}). Full accuracy mode - every stock evaluated.`;
+      } else {
+        alert("Last full scan data incomplete. Run a new full exhaustive scan.");
+      }
+    } catch (e) {
+      alert("Failed to load last full scan: " + (e.message || e));
+    } finally {
+      loadFullScanBtn.textContent = orig;
+    }
+  });
+
   /* --- Factor modal --- */
   document.querySelectorAll("[data-close='factorModal']").forEach((el) => {
     el.addEventListener("click", () => closeFactorModal());
@@ -603,6 +678,13 @@
     else if (passedEntry >= 2 && isBase) archetype = "Early Base / Coiling";
     else if (row.earnings_soon || breakdown.some(f => f.id && f.id.includes("earnings") && f.status === "pass")) archetype = "Pre-Earnings Catalyst";
     else if (hasCatalyst && (m.rvol || 0) > 1.5) archetype = "News + Volume Catalyst";
+
+    // Super heavy: if big investor, lead thesis with exact name + quality
+    if (hasSM && m.smart_money && m.smart_money.hits && m.smart_money.hits.length) {
+      const hit = m.smart_money.hits[0];
+      const q = hit.quality ? ` (${hit.quality})` : "";
+      bullets.unshift(`🚨 EXACT INVESTOR: ${hit.name}${q} — S+ heavy weight, monitor closely`);
+    }
 
     const bullets = [];
     if (hasSM) bullets.push("S+ tier named smart money / politician / FII buy context in recent news");
@@ -1042,7 +1124,7 @@
     cycleStrip.innerHTML = groups
       .map((g) => {
         const c = g.cycle || "mixed";
-        return `<div class="cycle-card" data-cycle="${escapeHtml(c)}">
+        return `<div class="cycle-card clickable" data-cycle="${escapeHtml(c)}" title="Click to view Sectors tab (filter to this cycle)">
           <div class="cycle-title">${escapeHtml(g.label || c)}</div>
           <div class="cycle-stats">
             <strong>${g.sector_count}</strong> sectors ·
@@ -1053,6 +1135,13 @@
         </div>`;
       })
       .join("");
+
+    cycleStrip.querySelectorAll(".cycle-card").forEach(card => {
+      card.addEventListener("click", () => {
+        // Switch to sectors tab; user can further filter. Could enhance with cycleFilter state.
+        document.querySelector('.tab[data-tab="sectors"]')?.click();
+      });
+    });
   }
 
   function renderSectorList(data) {
@@ -1263,13 +1352,13 @@
     statsBar.innerHTML = `
       <div class="stat-card clickable" data-stat="highconv" title="Click to filter hot list to high-conviction names only"><div class="label">High Conv (≥70)</div><div class="value">${highConv}</div></div>
       <div class="stat-card clickable" data-stat="whale" title="Click to show only names with whale / politician / FII signals (S+ Radar filter)"><div class="label">S+ Smart Money</div><div class="value" style="color:#f59e0b">${smCount}</div></div>
-      <div class="stat-card"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
-      <div class="stat-card"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
-      <div class="stat-card"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
+      <div class="stat-card clickable" data-stat="reset" title="Click to reset all filters and show hot list"><div class="label">Hot</div><div class="value">${s.hot_count || 0}</div></div>
+      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters (show all tracked in hot)"><div class="label">Tracked</div><div class="value">${s.symbols_tracked || 0}</div></div>
+      <div class="stat-card clickable" data-stat="news" title="Click to view News tab"><div class="label">News hits</div><div class="value">${newsBurst}</div></div>
       <div class="stat-card clickable" data-stat="sectors" title="Go to Sectors tab"><div class="label">Sectors</div><div class="value">${s.sector_count || 0}</div></div>
-      <div class="stat-card"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
-      <div class="stat-card"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
-      <div class="stat-card"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
+      <div class="stat-card clickable" data-stat="earnings" title="Click to view Earnings tab"><div class="label">Earnings 7d</div><div class="value">${s.earnings_upcoming || 0}</div></div>
+      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters"><div class="label">Full scan</div><div class="value" style="font-size:0.72rem">${fullScan}</div></div>
+      <div class="stat-card clickable" data-stat="reset" title="Click to reset filters"><div class="label">Price tick</div><div class="value" style="font-size:0.72rem">${quickPx}</div></div>
     `;
 
     // Quick filter actions from stats
@@ -1290,6 +1379,21 @@
           renderHot(lastData);
         } else if (st === "sectors") {
           document.querySelector('.tab[data-tab="sectors"]')?.click();
+        } else if (st === "news") {
+          document.querySelector('.tab[data-tab="news"]')?.click();
+        } else if (st === "earnings") {
+          document.querySelector('.tab[data-tab="earnings"]')?.click();
+        } else if (st === "reset") {
+          earlyOnly = false;
+          whaleOnly = false;
+          marketFilter = "all";
+          sectorFilter = null;
+          if (symbolSearch) symbolSearch.value = "";
+          document.querySelectorAll(".chip[data-market]").forEach(b => b.classList.remove("active"));
+          document.querySelector('.chip[data-market="all"]')?.classList.add("active");
+          const eChip = document.getElementById("earlyOnlyChip"); if (eChip) { eChip.classList.remove("active"); eChip.dataset.early = "0"; }
+          const wChip = document.getElementById("whaleOnlyChip"); if (wChip) { wChip.classList.remove("active"); wChip.dataset.whale = "0"; }
+          renderHot(lastData);
         }
       });
     });
@@ -1343,9 +1447,18 @@
         const watched = watchlist.some(w => w.symbol === r.symbol) ? "★" : "☆";
         const whaleClickable = whale ? ` <span class="whale-badge clickable" data-whale-sym="${attrEsc(r.symbol)}" title="Click for who / headline / why S+ 6.5× boost">${whale.replace(/<[^>]+>/g,'')}</span>` : "";
         const discBadge = r.discovered ? `<span class="ext-badge" style="background:rgba(168,85,247,0.25);color:#c084fc;border-color:#c084fc" title="From multi-website + large pool discovery scan (not regular hot)">DISC</span>` : "";
+        const fullBadge = r.full_exhaustive ? `<span class="ext-badge" style="background:#059669;color:white;border-color:#059669" title="From FULL EXHAUSTIVE scan across ALL India + US stocks (max data, full accuracy, no stone unturned)">FULL</span>` : "";
+        // Super heavy smart money display: exact name + quality immediately if present
+        let investorLine = "";
+        const sm = r.metrics && r.metrics.smart_money;
+        if (sm && sm.hits && sm.hits.length) {
+          const hit = sm.hits[0];
+          const q = hit.quality ? ` (${hit.quality})` : "";
+          investorLine = `<br><span style="color:#f59e0b;font-weight:700;font-size:0.75rem">🚨 Investor: ${escapeHtml(hit.name)}${escapeHtml(q)}</span>`;
+        }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
-          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${whaleClickable}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
-          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span></td>
+          <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${fullBadge}${whaleClickable}${investorLine}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
+          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${r.confidence_score != null ? `<span class="qual-pill" style="font-size:0.6rem;padding:1px 3px;background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence">${r.confidence_score}</span>` : ""}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
           <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
@@ -1461,12 +1574,23 @@
       : "";
 
     detailEl.innerHTML = `<div class="detail">
-      <h3>${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc deep analysis</span>' : ''}</h3>
-      <div class="meta-line">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${row.market.toUpperCase()}</div>
+      <h3 class="clickable" data-act="factors" title="Click for full factors checklist">${row.symbol} ${isAdHoc ? '<span class="chip" style="font-size:0.65rem; padding:1px 6px; vertical-align:middle;">ad-hoc deep analysis</span>' : ''}</h3>
+      <div class="meta-line clickable" data-act="factors" title="Click for full analysis">${escapeHtml(m.name || "")} · ${escapeHtml(m.sector || "")} · ${row.market.toUpperCase()}</div>
       ${clickableSmBlock}
+      <!-- Super prominent immediate smart money display: exact name + how good (quality) -->
+      ${(() => {
+        const sm = m.smart_money;
+        if (sm && sm.hits && sm.hits.length) {
+          const hit = sm.hits[0];
+          const q = hit.quality ? ` — ${escapeHtml(hit.quality)}` : "";
+          return `<div style="background:#fef3c7;border:2px solid #f59e0b;border-radius:6px;padding:0.4rem 0.6rem;margin:0.3rem 0;font-weight:700;color:#92400e">🚨 BIG INVESTOR: ${escapeHtml(hit.name)}${q} (S+ tier — heavy weight in engine)</div>`;
+        }
+        return "";
+      })()}
       <div class="detail-score-row">
         Buy <strong class="big-score clickable" data-act="factors" title="Click to see exactly which factors drove this buy score (weighted) and the full checklist">${m.buy_score ?? row.score}</strong>
         <span class="qual-pill clickable" data-act="factors" title="Quality score = broad checklist health (fundamentals + valuation + technicals). Click for breakdown">${m.quality_score ?? "—"}</span>
+        ${m.confidence_score != null ? `<span class="qual-pill" style="background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence: missing fundamentals/stale price/low volume/weak news/earnings source/market coverage">${m.confidence_score}</span>` : ""}
         ${m.is_extended ? '<span class="ext-badge">Extended — late chase</span>' : ""}
         <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}" title="Open the complete 100+ factor pass/fail with weights and tiers">${hit}/${total} factors</button>
       </div>
@@ -1798,4 +1922,27 @@
     if (document.getElementById("radarList")) renderRadar(null);
     renderAlertBell();
   }, 800);
+
+  // Make all "boxes" (guide cards, etc.) clickable with useful actions
+  document.querySelectorAll(".guide-card").forEach(card => {
+    const h3 = card.querySelector("h3")?.textContent || "";
+    card.style.cursor = "pointer";
+    card.title = "Click to switch to the relevant section";
+    card.addEventListener("click", () => {
+      if (h3.includes("Hot Movers")) {
+        document.querySelector('.tab[data-tab="hot"]')?.click();
+      } else if (h3.includes("Whale") || h3.includes("S+")) {
+        document.querySelector('.tab[data-tab="radar"]')?.click();
+      } else if (h3.includes("Earnings")) {
+        document.querySelector('.tab[data-tab="earnings"]')?.click();
+      } else if (h3.includes("Sectors")) {
+        document.querySelector('.tab[data-tab="sectors"]')?.click();
+      } else if (h3.includes("My List")) {
+        document.querySelector('.tab[data-tab="watch"]')?.click();
+      } else if (h3.includes("Live updates") || h3.includes("Thesis")) {
+        // no-op or scroll to top
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  });
 })();

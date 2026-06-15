@@ -33,6 +33,7 @@ def analyze_symbol(
     weights: dict[str, int] | None = None,  # legacy config, optional boost later
     earnings: dict[str, Any] | None = None,
     news_titles: list[str] | None = None,
+    market_events: list[dict[str, Any]] | None = None,
     calendar: dict[str, Any] | None = None,
 ) -> SignalResult:
     res = SignalResult(symbol=symbol, market=market)
@@ -47,6 +48,7 @@ def analyze_symbol(
         earnings=earnings,
         news_count=news_count_24h,
         news_titles=news_titles or [],
+        market_events=market_events or [],
         calendar=calendar,
     )
 

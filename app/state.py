@@ -23,6 +23,9 @@ class AppState:
     news: list[dict[str, Any]] = field(default_factory=list)
     news_by_symbol: dict[str, int] = field(default_factory=dict)
     news_titles_by_symbol: dict[str, list[str]] = field(default_factory=dict)
+    events: list[dict[str, Any]] = field(default_factory=list)
+    events_by_symbol: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    candidates: list[dict[str, Any]] = field(default_factory=list)
     earnings: list[dict[str, Any]] = field(default_factory=list)
     earnings_by_symbol: dict[str, dict[str, Any]] = field(default_factory=dict)
     stats: dict[str, Any] = field(default_factory=dict)
@@ -34,6 +37,8 @@ class AppState:
     scan_generation: int = 0
     live_tick: int = 0
     broadcast_event: asyncio.Event = field(default_factory=asyncio.Event)
+    jobs: dict = field(default_factory=dict)  # job_id -> {"status": "running"/"done"/"error", "progress": 0-100, "result": ..., "started": ...}
+    investor_events: list = field(default_factory=list)  # recent official filings (insider/ceo/promoter etc.) for UI/radar
 
     @staticmethod
     def _slim_scan_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -171,6 +176,41 @@ class AppState:
                     self.news_titles_by_symbol[sym] = merged
             self.stats["last_news_scan"] = datetime.now(timezone.utc).isoformat()
             self.stats["news_count"] = len(self.news)
+            self.live_tick += 1
+            self.stats["live_tick"] = self.live_tick
+        self.broadcast_event.set()
+
+    async def update_events(self, events: list[dict[str, Any]]) -> None:
+        if not events:
+            return
+        async with self.lock:
+            merged = events + self.events
+            seen = set()
+            deduped = []
+            for e in merged:
+                key = e.get("event_key") or f"{e.get('symbol')}:{e.get('event_type')}:{e.get('title')}"
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(e)
+            self.events = deduped[:250]
+            by_symbol: dict[str, list[dict[str, Any]]] = {}
+            for e in self.events:
+                sym = e.get("symbol")
+                if sym:
+                    by_symbol.setdefault(sym, []).append(e)
+            self.events_by_symbol = {k: v[:20] for k, v in by_symbol.items()}
+            self.stats["market_events_count"] = len(self.events)
+            self.stats["last_event_scan"] = datetime.now(timezone.utc).isoformat()
+            self.live_tick += 1
+            self.stats["live_tick"] = self.live_tick
+        self.broadcast_event.set()
+
+    async def update_candidates(self, candidates: list[dict[str, Any]]) -> None:
+        async with self.lock:
+            self.candidates = candidates[:300]
+            self.stats["candidate_count"] = len(self.candidates)
+            self.stats["last_light_scan"] = datetime.now(timezone.utc).isoformat()
             self.live_tick += 1
             self.stats["live_tick"] = self.live_tick
         self.broadcast_event.set()
@@ -326,6 +366,9 @@ class AppState:
                 "hot": hot,
                 "hot_by_market": hot_bm,
                 "earnings": aug_earnings,
+                "events": list(self.events[:80]),
+                "candidates": list(self.candidates[:120]),
+                "investor_events": list(getattr(self, "investor_events", [])[-20:]),  # recent official filings (insider/ceo/promoter etc.) for UI/radar
                 "news": list(self.news[:60]),
                 "universe_sizes": {k: len(v) for k, v in self.universe.items()},
                 "sectors": list(self.sectors),

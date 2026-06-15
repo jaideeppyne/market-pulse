@@ -13,18 +13,27 @@ from app.engine.factor_catalog import (  # noqa: F401 — re-export
 from app.engine.factor_weights import factor_weight, tier_label, weighted_points
 from app.engine.scoring import _compute_scores
 from app.engine.indicators import (
+    adx,
+    atr,
+    bollinger_bands,
+    cci,
     cup_handle_score,
     dma,
     ema,
     higher_lows,
     ma_alignment,
     macd_signal,
+    ma_slope,
     ma_support_resistance,
     near_ma_pullback,
+    obv,
     pct_52w_range,
     range_compression,
+    rate_of_change,
     rsi,
     rsi_turning_up,
+    stochastic_oscillator,
+    volatility,
     volume_trend,
 )
 
@@ -266,6 +275,39 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
     if ema20v and ctx.price > ema20v * 0.98 and ctx.price < ema20v * 1.03:
         add("near_ema20", "technical", "Price near 20 EMA", 1.0)
 
+    # Nitpicky technical details for full accuracy - every small indicator
+    bb = bollinger_bands(close)
+    if bb.get("signal") == "squeeze":
+        add("bb_squeeze", "technical", "Bollinger squeeze (low vol breakout setup)", 2.0, "BB SQUEEZE")
+    if bb.get("signal") == "below_lower":
+        add("bb_oversold", "technical", "Below lower Bollinger (mean reversion opp)", 1.5)
+    stoch = stochastic_oscillator(ctx.hist["High"], ctx.hist["Low"], close)
+    if stoch.get("signal") == "bull_cross":
+        add("stoch_bull_cross", "technical", "Stochastic bullish cross", 1.5)
+    if stoch.get("signal") == "oversold":
+        add("stoch_oversold", "technical", "Stochastic oversold", 1.5)
+    cci_val = cci(ctx.hist["High"], ctx.hist["Low"], close)
+    if cci_val.get("signal") == "oversold":
+        add("cci_oversold", "technical", "CCI oversold (reversal signal)", 1.5)
+    adx_val = adx(ctx.hist["High"], ctx.hist["Low"], close)
+    if adx_val.get("signal") == "trending" and ctx.day_chg_pct > 0:
+        add("adx_trending_up", "technical", "ADX trending with upside", 1.5)
+    atr_val = atr(ctx.hist["High"], ctx.hist["Low"], close)
+    if atr_val and atr_val / ctx.price > 0.03:
+        add("high_atr_volatility", "technical", "High ATR volatility play", 1.0)
+    obv_val = obv(close, ctx.hist["Volume"])
+    if obv_val.get("signal") == "accumulation":
+        add("obv_accumulation", "technical", "OBV accumulation (smart buying)", 2.0)
+    ma_slope_val = ma_slope(close, 20)
+    if ma_slope_val and ma_slope_val > 0.5:
+        add("ma20_rising", "technical", "20MA rising steeply", 1.5)
+    vol = volatility(close)
+    if vol and vol > 40:
+        add("high_volatility", "technical", "High annualized vol (opp or risk)", 1.0)
+    roc = rate_of_change(close, 10)
+    if roc and roc > 5:
+        add("strong_roc_momentum", "technical", "Strong 10d ROC momentum", 1.5)
+
     # --- VOLUME & MOMENTUM ---
     if ctx.rvol >= 2.5:
         add("rvol_surge", "volume", f"RVOL {ctx.rvol:.1f}x", 3.0, f"RVOL {ctx.rvol:.1f}x")
@@ -301,6 +343,40 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
         add("post_market_gap", "momentum", f"Post-market {post:+.1f}%", 2.0)
     if pre and abs(pre) >= 2:
         add("pre_market_gap", "momentum", f"Pre-market {pre:+.1f}%", 1.5)
+
+    # --- OFFICIAL / STRUCTURED MARKET EVENTS ---
+    # These come from fast event crawlers such as SEC Form 4 and high-signal
+    # promoter/block-deal news extraction. They are stronger than generic news_count.
+    events = ctx.market_events or []
+    if events:
+        strongest = sorted(events, key=lambda e: e.get("severity", 0), reverse=True)[0]
+        metrics_label = strongest.get("title") or strongest.get("event_type", "market event")
+        for e in events[:12]:
+            et = e.get("event_type", "")
+            actor = e.get("actor_name") or ""
+            role = e.get("actor_role") or ""
+            amount = e.get("amount")
+            suffix = f" ({actor})" if actor else ""
+            amt = f" ~${amount/1_000_000:.1f}M" if isinstance(amount, (int, float)) and amount >= 1_000_000 else ""
+            if et in ("ceo_buy", "ceo_buy_news"):
+                add("event_ceo_buy", "catalyst", f"CEO/MD buy{suffix}{amt}", 6.5, "CEO BUY")
+                break
+            if et == "cfo_buy":
+                add("event_cfo_buy", "catalyst", f"CFO buy{suffix}{amt}", 5.0, "CFO BUY")
+                break
+            if et == "director_buy":
+                add("event_director_buy", "catalyst", f"Director buy{suffix}{amt}", 4.5, "DIRECTOR BUY")
+                break
+            if et in ("insider_open_market_buy", "news_insider_buy", "sec_form4_filing"):
+                label = f"Insider buy/event{suffix}{amt}" if et != "sec_form4_filing" else f"SEC Form 4 filed{suffix}"
+                add("event_insider_buy", "catalyst", label, 4.0, "INSIDER BUY")
+                break
+            if et == "promoter_or_insider_buy" and ctx.market == "india":
+                add("event_promoter_buy", "catalyst", f"Promoter/management buy: {metrics_label[:55]}", 4.5, "PROMOTER BUY")
+                break
+            if et == "bulk_block_deal" and ctx.market == "india":
+                add("event_bulk_block_deal", "catalyst", f"Bulk/block deal: {metrics_label[:55]}", 3.5, "BLOCK DEAL")
+                break
 
     # --- NEWS & CATALYSTS (text mining) ---
     if ctx.news_count >= 3:
@@ -461,6 +537,8 @@ def evaluate_factors(ctx: ScanContext) -> tuple[float, list[FactorHit], list[str
         "top_weighted_factors": top_weighted,
         "smart_money": ctx.smart_money.to_metrics(),
         "has_smart_money": bool(ctx.smart_money.matches),
+        "market_events": ctx.market_events[:8],
+        "has_market_event": bool(ctx.market_events),
     }
 
     factor_details = enriched

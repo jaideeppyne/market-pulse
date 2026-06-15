@@ -299,25 +299,53 @@ async def api_earnings(days: int = 7):
 
 @app.get("/api/edge")
 async def api_edge(days: int = 2, min_score: float = 55.0):
-    """Backtest / historical edge view: recent strong snapshots from the DB.
-    Traders can see what the engine was flagging as high conviction in the recent past.
-    Full forward returns computed client-side or via re-analyze for now (free data limits).
+    """Backtest / historical edge view with forward outcomes.
+    Recent strong snapshots + computed 1d/3d/7d/14d returns, max DD, hit rates by score bucket,
+    and basic factor win-rate hints (from payload). Self-validating engine.
     """
-    snaps = await recent_strong_snapshots(days=days, min_score=min_score, limit=120)
-    # Group by approximate window for "past scans"
+    snaps = await recent_strong_snapshots_with_outcomes(days=days, min_score=min_score, limit=120)
+    # Group by approximate window
     by_time: dict[str, list] = {}
     for s in snaps:
-        key = s.get("created_at", "")[:13]  # hour bucket
+        key = s.get("created_at", "")[:13]
         by_time.setdefault(key, []).append({
             "symbol": s["symbol"],
             "market": s.get("market"),
             "score": round(s.get("score", 0), 1),
             "created_at": s.get("created_at"),
             "has_smart_money": bool((s.get("payload") or {}).get("metrics", {}).get("smart_money", {}).get("hits")),
+            "outcomes": s.get("outcomes"),
         })
+    # Compute aggregates for validation
+    valid = [s for s in snaps if s.get("outcomes") and s["outcomes"].get("ret_7d") is not None]
+    total = len(valid)
+    hit_7d = sum(1 for s in valid if s["outcomes"]["ret_7d"] > 0)
+    avg_ret7 = sum(s["outcomes"]["ret_7d"] for s in valid) / total if total else 0
+    # Buckets
+    buckets = {"70+": [], "60-70": [], "55-60": []}
+    for s in valid:
+        sc = s.get("score", 0)
+        if sc >= 70:
+            buckets["70+"].append(s["outcomes"]["ret_7d"])
+        elif sc >= 60:
+            buckets["60-70"].append(s["outcomes"]["ret_7d"])
+        else:
+            buckets["55-60"].append(s["outcomes"]["ret_7d"])
+    bucket_stats = {}
+    for b, rets in buckets.items():
+        if rets:
+            bucket_stats[b] = {
+                "n": len(rets),
+                "hit_rate": round(sum(1 for r in rets if r > 0) / len(rets) * 100, 1),
+                "avg_ret7d": round(sum(rets) / len(rets), 2),
+            }
     summary = {
         "windows": len(by_time),
         "total_signals": len(snaps),
+        "valid_with_outcomes": total,
+        "hit_rate_7d": round(hit_7d / total * 100, 1) if total else 0,
+        "avg_ret_7d": round(avg_ret7, 2),
+        "bucket_stats": bucket_stats,
         "min_score": min_score,
         "days": days,
     }
@@ -411,6 +439,79 @@ async def api_snapshots_for_symbol(symbol: str, limit: int = 20):
     sym = unquote(symbol).upper()
     rows = await snapshots_for_symbol(sym, limit=limit)
     return {"symbol": sym, "snapshots": rows}
+
+
+@app.post("/api/full_exhaustive_scan")
+async def api_full_exhaustive_scan():
+    """Start background job for full exhaustive scan (non-blocking).
+    Returns job_id. Poll /api/job_status/{id} or listen to WS for progress.
+    """
+    from app.universe import get_complete_exhaustive_universe
+    from app.crawler.price_crawler import full_exhaustive_scan
+    import uuid
+    cfg = load_config()
+    pool = get_complete_exhaustive_universe(cfg)
+    async with state.lock:
+        nc = dict(state.news_by_symbol or {})
+        nt = dict(state.news_titles_by_symbol or {})
+        em = dict(state.earnings_by_symbol or {})
+    job_id = str(uuid.uuid4())
+    async with state.lock:
+        state.jobs[job_id] = {"status": "running", "progress": 0, "started": datetime.now(timezone.utc).isoformat(), "result": None, "error": None}
+    def _run_job():
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            res = new_loop.run_until_complete(full_exhaustive_scan(pool, nc, nt, em))
+            async def _finish():
+                async with state.lock:
+                    if job_id in state.jobs:
+                        state.jobs[job_id].update({"status": "done", "progress": 100, "result": {
+                            "scanned": len(pool),
+                            "opportunities_found": len(res),
+                            "results": res[:200],
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }})
+                        state.full_exhaustive_results = state.jobs[job_id]["result"]
+                state.broadcast_event.set()
+            asyncio.run_coroutine_threadsafe(_finish(), asyncio.get_event_loop())
+        except Exception as e:
+            async def _err():
+                async with state.lock:
+                    if job_id in state.jobs:
+                        state.jobs[job_id].update({"status": "error", "error": str(e)[:200]})
+                state.broadcast_event.set()
+            asyncio.run_coroutine_threadsafe(_err(), asyncio.get_event_loop())
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+        ex.submit(_run_job)
+    return {"job_id": job_id, "status": "started", "note": "Use /api/job_status or WS for updates. Long running."}
+
+
+@app.get("/api/job_status/{job_id}")
+async def api_job_status(job_id: str):
+    async with state.lock:
+        j = state.jobs.get(job_id)
+        if not j:
+            return {"error": "not found"}
+        return {"job_id": job_id, "status": j["status"], "progress": j.get("progress", 0), "error": j.get("error")}
+
+
+@app.get("/api/job_result/{job_id}")
+async def api_job_result(job_id: str):
+    async with state.lock:
+        j = state.jobs.get(job_id)
+        if not j or j.get("status") != "done":
+            return {"error": "not done or not found"}
+        return j.get("result") or {}
+
+
+@app.get("/api/last_full_scan")
+async def api_last_full_scan():
+    async with state.lock:
+        if not hasattr(state, "full_exhaustive_results") or not state.full_exhaustive_results:
+            return {"status": "none", "message": "No full exhaustive scan run yet. Trigger via /api/full_exhaustive_scan or the UI button."}
+        return state.full_exhaustive_results
 
 
 @app.get("/api/health")

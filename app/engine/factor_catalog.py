@@ -103,6 +103,12 @@ FACTOR_CATALOG: list[FactorDef] = [
     FactorDef("news_fda_approval", "catalyst", "FDA / approval", "Regulatory approval (esp. pharma)", "us"),
     FactorDef("news_sector_tailwind", "catalyst", "Sector tailwind", "Sector rally / capex news", "both"),
     FactorDef("news_fii_flow", "catalyst", "FII / flows (India)", "FII, DII, flow mention in news", "india"),
+    FactorDef("event_ceo_buy", "catalyst", "CEO open-market buy", "CEO / MD personally bought company shares", "both"),
+    FactorDef("event_cfo_buy", "catalyst", "CFO open-market buy", "CFO personally bought company shares", "both"),
+    FactorDef("event_director_buy", "catalyst", "Director open-market buy", "Director bought company shares", "both"),
+    FactorDef("event_insider_buy", "catalyst", "Official insider buy", "SEC Form 4 or structured insider/promoter buy event", "both"),
+    FactorDef("event_promoter_buy", "catalyst", "Promoter / management buy", "India promoter/management buying or stake increase", "india"),
+    FactorDef("event_bulk_block_deal", "catalyst", "Bulk / block deal event", "Structured bulk/block deal event", "india"),
     # Sector-specific (5)
     FactorDef("bank_roe", "sector", "Bank ROE", "Bank: ROE > 12%", "both"),
     FactorDef("tech_growth", "sector", "Tech growth", "Tech: revenue growth > 15%", "both"),
