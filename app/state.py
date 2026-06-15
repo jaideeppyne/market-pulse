@@ -44,15 +44,33 @@ class AppState:
     investor_events: list = field(default_factory=list)  # recent official filings (insider/ceo/promoter etc.) for UI/radar
 
     @staticmethod
+    def _buy_rank(row: dict[str, Any]) -> float:
+        """Ranking score for live scanner views; prefer explicit buy_score."""
+        m = row.get("metrics") or {}
+        value = row.get("buy_score")
+        if value is None:
+            value = m.get("buy_score")
+        if value is None:
+            value = row.get("score", 0)
+        try:
+            return float(value or 0)
+        except Exception:
+            return 0.0
+
+    @staticmethod
     def _slim_scan_row(row: dict[str, Any]) -> dict[str, Any]:
         """Light payload for WebSocket (full factor_breakdown via /api/symbol)."""
         m = dict(row.get("metrics") or {})
         for key in ("factor_breakdown", "signals", "factors_by_category"):
             m.pop(key, None)
+        buy_score = row.get("buy_score", m.get("buy_score", row.get("score")))
+        quality_score = row.get("quality_score", m.get("quality_score"))
         return {
             "symbol": row.get("symbol"),
             "market": row.get("market"),
             "score": row.get("score"),
+            "buy_score": buy_score,
+            "quality_score": quality_score,
             "factors_hit": row.get("factors_hit"),
             "factors_total": row.get("factors_total"),
             "alerts": (row.get("alerts") or [])[:6],
@@ -66,10 +84,10 @@ class AppState:
         top_n = self.hot_top_n
         all_items = sorted(
             self.symbols.values(),
-            key=lambda x: x.get("score", 0),
+            key=self._buy_rank,
             reverse=True,
         )
-        hot_all = [x for x in all_items if x.get("score", 0) >= threshold]
+        hot_all = [x for x in all_items if self._buy_rank(x) >= threshold]
         self.hot = hot_all[:top_n]
         # Global hot stays strict (names >= threshold, top N overall for the "Hot" stat and main view).
         # For market tabs (India / US), ALWAYS surface the top scored for that market (top 50 by score,
@@ -78,8 +96,8 @@ class AppState:
         # or small during partial scans). Uses recent scores from the live state.
         all_us = [x for x in all_items if x.get("market") == "us"]
         all_india = [x for x in all_items if x.get("market") == "india"]
-        all_us.sort(key=lambda x: x.get("score", 0), reverse=True)
-        all_india.sort(key=lambda x: x.get("score", 0), reverse=True)
+        all_us.sort(key=self._buy_rank, reverse=True)
+        all_india.sort(key=self._buy_rank, reverse=True)
         self.hot_by_market = {
             "us": all_us[:50],   # top 50 US by current score for the US tab
             "india": all_india[:50],  # top 50 India by current score for the India tab
@@ -97,6 +115,7 @@ class AppState:
         partial: bool = False,
         batch_index: int = 0,
         batch_total: int = 0,
+        attempted_count: int | None = None,
     ) -> None:
         async with self.lock:
             self.hot_score_threshold = threshold
@@ -106,25 +125,34 @@ class AppState:
             now = datetime.now(timezone.utc).isoformat()
             self.scan_generation += 1
             self.live_tick += 1
-            self.stats.update(
-                {
-                    "symbols_tracked": len(self.symbols),
-                    "hot_count": len(
-                        [x for x in self.symbols.values() if x.get("score", 0) >= threshold]
-                    ),
-                    "hot_shown": len(self.hot),
-                    "sector_count": len(self.sectors),
-                    "last_price_tick": now,
-                    "scan_in_progress": partial,
-                    "scan_batch": batch_index,
-                    "scan_batches_total": batch_total,
-                    "scan_generation": self.scan_generation,
-                    "live_tick": self.live_tick,
-                }
-            )
+            stats_update = {
+                "symbols_tracked": len(self.symbols),
+                "hot_count": len(
+                    [x for x in self.symbols.values() if self._buy_rank(x) >= threshold]
+                ),
+                "hot_shown": len(self.hot),
+                "sector_count": len(self.sectors),
+                "last_price_tick": now,
+                "scan_in_progress": partial,
+                "scan_batch": batch_index,
+                "scan_batches_total": batch_total,
+                "scan_generation": self.scan_generation,
+                "live_tick": self.live_tick,
+                "last_price_batch_result_count": len(results),
+                "last_price_batch_empty": partial and len(results) == 0,
+            }
+            if attempted_count is not None:
+                stats_update["last_price_batch_attempted"] = attempted_count
+            self.stats.update(stats_update)
             if not partial:
                 self.stats["last_price_scan"] = now
                 self.stats["scan_in_progress"] = False
+                self.stats["last_full_price_scan_result_count"] = len(results)
+                self.stats["last_full_price_scan_empty"] = len(results) == 0
+                if attempted_count is not None:
+                    self.stats["last_full_price_scan_attempted"] = attempted_count
+                if len(results) == 0:
+                    self.stats["last_empty_price_scan"] = now
         self.broadcast_event.set()
 
     async def apply_price_patches(self, patches: list[dict[str, Any]]) -> int:

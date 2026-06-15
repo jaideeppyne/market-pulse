@@ -27,6 +27,11 @@ BUY_CONTEXT = re.compile(
     re.I,
 )
 
+NON_EQUITY_PURCHASE_CONTEXT = re.compile(
+    r"\b(flat|apartment|home|house|villa|property|real\s+estate|land|plot|bungalow)\b",
+    re.I,
+)
+
 # India: top tracked retail / PMS / MF legends (user-requested + widely followed)
 # Each has 'quality' for "how good": short description of edge/track record. Politicians/relatives included for attention premium.
 INDIA_LEGENDS: list[dict[str, Any]] = [
@@ -199,6 +204,8 @@ REGISTRY: list[dict] = (
 
 def _title_matches(entry: dict, title: str) -> bool:
     if not entry["pattern"].search(title):
+        return False
+    if NON_EQUITY_PURCHASE_CONTEXT.search(title) and not re.search(r"\b(stake|shares?|equity|holding|position|bulk\s+deal|block\s+deal|13f|form\s+4|insider)\b", title, re.I):
         return False
     if entry.get("require_buy", True) and not BUY_CONTEXT.search(title):
         return False

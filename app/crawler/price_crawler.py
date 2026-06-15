@@ -118,8 +118,8 @@ async def scan_symbols(
     results: list[dict[str, Any]] = []
     for sym, data in raw.items():
         try:
-            hist, info, calendar = data or (None, {}, None)
-            if not hist or len(hist) < 10:
+            hist, info, calendar = data if data is not None else (None, {}, None)
+            if hist is None or getattr(hist, "empty", False) or len(hist) < 10:
                 continue  # bad / delisted / insufficient - skip fast for resilience
             earn = earnings_by_symbol.get(sym)
             sig = analyze_symbol(
@@ -142,10 +142,14 @@ async def scan_symbols(
             if vol < 50000: conf -= 10
             if market == "india": conf -= 5
             conf = max(40, min(100, conf))
+            buy_score = sig.metrics.get("buy_score", sig.score)
+            quality_score = sig.metrics.get("quality_score", 0)
             payload = {
                 "symbol": sym,
                 "market": market,
                 "score": sig.score,
+                "buy_score": buy_score,
+                "quality_score": quality_score,
                 "confidence_score": conf,
                 "signals": sig.signals,
                 "alerts": sig.alerts,
@@ -162,9 +166,11 @@ async def scan_symbols(
             logger.debug("scan skip %s: %s", sym, str(e)[:80])
             continue
     annotate_ml_intel(results)
+    results.sort(key=lambda x: x.get("buy_score", x.get("score", 0)), reverse=True)
     for payload in results:
-        if payload.get("score", 0) >= 40:
-            await insert_snapshot(payload["symbol"], market, payload, payload.get("score", 0))
+        snapshot_score = payload.get("buy_score", payload.get("score", 0))
+        if snapshot_score >= 40:
+            await insert_snapshot(payload["symbol"], market, payload, snapshot_score)
     return results
 
 

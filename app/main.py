@@ -4,33 +4,45 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import load_config
 from app.db import (
     DB_PATH,
+    add_alert_rule,
     add_to_watchlist,
     db_file_size_mb,
+    delete_alert_rule,
     evaluate_rules_for_snapshot,
     get_or_create_default_rules,
     init_db,
     insert_alert,
     list_alert_rules,
+    list_journal,
+    list_portfolio,
     list_watchlist,
+    remove_from_watchlist,
     recent_alerts,
     recent_market_events,
     recent_news,
+    recent_strong_snapshots,
     recent_strong_snapshots_with_outcomes,
+    record_trade_journal,
     snapshots_for_symbol,
     upcoming_earnings,
     update_alert_rule_last_triggered,
+    update_portfolio_position,
+    upsert_portfolio_position,
+    delete_portfolio_position,
+    get_performance_stats,
 )
 from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
@@ -237,6 +249,56 @@ if FRONTEND.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
 
+_WRITE_KEY_ENV = "MARKET_PULSE_WRITE_KEY"
+_ALLOW_UNAUTH_WRITES_ENV = "MARKET_PULSE_ALLOW_UNAUTH_WRITES"
+_SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,19}$")
+_RULE_TYPE_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,40}$")
+
+
+def _is_local_client(request: Request) -> bool:
+    host = (request.client.host if request.client else "") or ""
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _assert_write_allowed(request: Request) -> None:
+    """Guard persistent mutations for public deployments.
+
+    Local development stays frictionless. Public/server deployments should set
+    MARKET_PULSE_WRITE_KEY and send it via X-API-Key, or explicitly set
+    MARKET_PULSE_ALLOW_UNAUTH_WRITES=1 if they accept unauthenticated writes.
+    """
+    if os.getenv(_ALLOW_UNAUTH_WRITES_ENV) == "1":
+        return
+    configured_key = os.getenv(_WRITE_KEY_ENV)
+    if configured_key:
+        provided = request.headers.get("x-api-key")
+        if provided == configured_key:
+            return
+        raise HTTPException(status_code=401, detail="valid X-API-Key required for write operation")
+    if _is_local_client(request):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=f"write operations require {_WRITE_KEY_ENV} for non-local clients",
+    )
+
+
+def _validate_symbol(symbol: str) -> str:
+    sym = symbol.strip().upper()
+    if not sym or not _SYMBOL_RE.match(sym):
+        raise HTTPException(status_code=400, detail="invalid symbol")
+    return sym
+
+
+def _validate_alert_condition(condition: object) -> dict:
+    if not isinstance(condition, dict):
+        raise HTTPException(status_code=400, detail="condition must be an object")
+    encoded = json.dumps(condition, separators=(",", ":"))
+    if len(encoded) > 4096:
+        raise HTTPException(status_code=400, detail="condition too large")
+    return condition
+
+
 @app.get("/")
 async def index():
     index_path = FRONTEND / "index.html"
@@ -390,9 +452,204 @@ async def api_symbol(symbol: str, refresh: bool = False):
 
 @app.get("/api/news")
 async def api_news(limit: int = 80):
-    db_news = await recent_news(limit)
+    safe_limit = max(1, min(limit, 500))
+    db_news = await recent_news(safe_limit)
     snap = await state.snapshot()
-    return {"live": snap.get("news", []), "stored": db_news}
+    return {"live": snap.get("news", []), "stored": db_news, "limit": safe_limit}
+
+
+@app.get("/api/watchlist")
+async def api_watchlist():
+    watches = await list_watchlist()
+    return {"watches": watches, "count": len(watches)}
+
+
+@app.post("/api/watchlist")
+async def api_add_watchlist(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    symbol = _validate_symbol(str(payload.get("symbol") or ""))
+    notes = str(payload.get("notes") or "")[:500]
+    ok = await add_to_watchlist(symbol, notes=notes)
+    watches = await list_watchlist()
+    async with state.lock:
+        state.watches = watches
+    state.broadcast_event.set()
+    return {"ok": ok, "symbol": symbol, "watches": watches}
+
+
+@app.delete("/api/watchlist/{symbol:path}")
+async def api_delete_watchlist(symbol: str, request: Request):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    await remove_from_watchlist(sym)
+    watches = await list_watchlist()
+    async with state.lock:
+        state.watches = watches
+    state.broadcast_event.set()
+    return {"ok": True, "symbol": sym, "watches": watches}
+
+
+@app.get("/api/alert_rules")
+async def api_alert_rules():
+    rules = await list_alert_rules()
+    return {"rules": rules, "count": len(rules)}
+
+
+@app.post("/api/alert_rules")
+async def api_add_alert_rule(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    rule_type = str(payload.get("rule_type") or "custom").strip() or "custom"
+    if not _RULE_TYPE_RE.match(rule_type):
+        raise HTTPException(status_code=400, detail="invalid rule_type")
+    condition = _validate_alert_condition(payload.get("condition") or {})
+    enabled = bool(payload.get("enabled", True))
+    rule_id = await add_alert_rule(rule_type, condition, enabled=enabled)
+    rules = await list_alert_rules()
+    rule = next((r for r in rules if r.get("id") == rule_id), None)
+    return {"ok": True, "id": rule_id, "rule": rule}
+
+
+@app.delete("/api/alert_rules/{rule_id:int}")
+async def api_delete_alert_rule(rule_id: int, request: Request):
+    _assert_write_allowed(request)
+    await delete_alert_rule(rule_id)
+    return {"ok": True, "id": rule_id}
+
+
+@app.get("/api/alerts/recent")
+async def api_recent_alerts(limit: int = 50):
+    safe_limit = max(1, min(limit, 200))
+    alerts = await recent_alerts(limit=safe_limit)
+    return {"alerts": alerts, "count": len(alerts), "limit": safe_limit}
+
+
+def _as_positive_float(value, field: str, *, required: bool = False):
+    if value is None or value == "":
+        if required:
+            raise HTTPException(status_code=400, detail=f"{field} required")
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail=f"{field} must be numeric")
+    if parsed <= 0:
+        raise HTTPException(status_code=400, detail=f"{field} must be > 0")
+    return parsed
+
+
+def _current_row_for_symbol(symbol: str) -> dict | None:
+    row = state.symbols.get(symbol)
+    if not row and symbol.endswith((".NS", ".BO")):
+        row = state.symbols.get(symbol.replace(".NS", "").replace(".BO", ""))
+    return row
+
+
+async def _portfolio_payload() -> dict:
+    positions = await list_portfolio()
+    stats = await get_performance_stats()
+    open_value = 0.0
+    open_pnl = 0.0
+    enriched = []
+    async with state.lock:
+        symbols_cache = dict(state.symbols)
+    for pos in positions:
+        p = dict(pos)
+        sym = p.get("symbol")
+        row = symbols_cache.get(sym) or {}
+        m = row.get("metrics") or {}
+        current_price = m.get("price") or p.get("entry_price")
+        qty = float(p.get("qty") or 0)
+        entry = float(p.get("entry_price") or 0)
+        if current_price is not None:
+            try:
+                cp = float(current_price)
+                est_pnl = round((cp - entry) * qty, 2)
+                p["current_price"] = cp
+                p["est_pnl"] = est_pnl
+                p["est_pnl_pct"] = round(((cp - entry) / entry * 100), 2) if entry else 0
+                open_value += cp * qty
+                open_pnl += est_pnl
+            except Exception:
+                pass
+        p["current_buy"] = m.get("buy_score") or row.get("buy_score") or row.get("score")
+        p["current_qual"] = m.get("quality_score") or row.get("quality_score")
+        enriched.append(p)
+    entry_value = round(sum(float(p.get("entry_price") or 0) * float(p.get("qty") or 0) for p in positions), 2)
+    stats.update({
+        "paper_equity_entry": entry_value,
+        "total_paper_value_est": round(open_value, 2) if open_value else entry_value,
+        "open_pnl_est": round(open_pnl, 2),
+    })
+    return {"positions": enriched, "stats": stats, "count": len(enriched)}
+
+
+@app.get("/api/portfolio")
+async def api_portfolio():
+    return await _portfolio_payload()
+
+
+@app.post("/api/portfolio")
+async def api_add_portfolio(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    symbol = _validate_symbol(str(payload.get("symbol") or ""))
+    qty = _as_positive_float(payload.get("qty"), "qty", required=True)
+    entry_price = _as_positive_float(payload.get("entry_price"), "entry_price", required=True)
+    entry_score = payload.get("entry_score")
+    if entry_score is not None and entry_score != "":
+        try:
+            entry_score = float(entry_score)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="entry_score must be numeric")
+    notes = str(payload.get("notes") or "")[:1000] or None
+    sl = _as_positive_float(payload.get("sl"), "sl")
+    target = _as_positive_float(payload.get("target"), "target")
+    market = str(payload.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "us"))
+    pos_id = await upsert_portfolio_position(symbol, market, qty, entry_price, entry_score, notes, sl, target)
+    await record_trade_journal(symbol, "buy", price=entry_price, qty=qty, score_at_time=entry_score, notes=notes, linked_position_id=pos_id)
+    return {"ok": True, "id": pos_id, **(await _portfolio_payload())}
+
+
+@app.get("/api/journal")
+async def api_journal(limit: int = 100):
+    safe_limit = max(1, min(limit, 500))
+    journal = await list_journal(limit=safe_limit)
+    return {"journal": journal, "count": len(journal), "limit": safe_limit}
+
+
+@app.post("/api/position/{symbol:path}/update")
+async def api_update_position(symbol: str, request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    notes = payload.get("notes")
+    notes = str(notes)[:1000] if notes is not None else None
+    sl = _as_positive_float(payload.get("sl"), "sl")
+    target = _as_positive_float(payload.get("target"), "target")
+    await update_portfolio_position(sym, notes=notes, sl=sl, target=target)
+    return {"ok": True, **(await _portfolio_payload())}
+
+
+@app.post("/api/position/{symbol:path}/close")
+async def api_close_position(symbol: str, request: Request, payload: dict = Body(default_factory=dict)):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    positions = await list_portfolio()
+    pos = next((p for p in positions if (p.get("symbol") or "").upper() == sym), None)
+    if not pos:
+        raise HTTPException(status_code=404, detail="position not found")
+    close_price = payload.get("price") or payload.get("close_price")
+    if close_price is not None and close_price != "":
+        close_price = _as_positive_float(close_price, "close_price", required=True)
+    else:
+        async with state.lock:
+            row = dict(state.symbols.get(sym) or {})
+        close_price = (row.get("metrics") or {}).get("price") or pos.get("entry_price")
+        close_price = float(close_price)
+    qty = float(pos.get("qty") or 0)
+    entry = float(pos.get("entry_price") or 0)
+    realized = round((close_price - entry) * qty, 2)
+    await record_trade_journal(sym, "close", price=close_price, qty=qty, outcome_pnl=realized, notes=str(payload.get("notes") or pos.get("notes") or "")[:1000], linked_position_id=pos.get("id"))
+    await delete_portfolio_position(sym)
+    return {"ok": True, "symbol": sym, "outcome_pnl": realized, **(await _portfolio_payload())}
 
 
 @app.get("/api/events")
@@ -481,7 +738,7 @@ async def get_regime() -> dict:
     """
     try:
         import yfinance as yf
-        from datetime import datetime
+        from datetime import timedelta, datetime
         vix_hist = yf.download("^VIX", period="10d", progress=False, auto_adjust=True)
         vix = float(vix_hist["Close"].iloc[-1]) if not vix_hist.empty else 20.0
         # Broad US trend via SPY 1m vs 20d ago; simple bias

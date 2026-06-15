@@ -485,13 +485,6 @@ async def insert_investor_event(event: dict[str, Any]) -> None:
             """
             INSERT INTO investor_events (symbol, event_type, investor_name, investor_quality, details, source, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(symbol) DO UPDATE SET
-                event_type=excluded.event_type,
-                investor_name=excluded.investor_name,
-                investor_quality=excluded.investor_quality,
-                details=excluded.details,
-                source=excluded.source,
-                created_at=excluded.created_at
             """,
             (
                 event.get("symbol"),
@@ -680,7 +673,32 @@ async def insert_alert(
     """Store a triggered alert. Returns id. Also logs high-severity to market_events for history."""
     sym = symbol.upper()
     now = utc_now()
+    dedupe_minutes = max(1, int(os.getenv("ALERT_DEDUPE_MINUTES", "30")))
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=dedupe_minutes)).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        if rule_id is not None:
+            existing = await db.execute(
+                """
+                SELECT id FROM alerts
+                WHERE symbol = ? AND rule_id = ? AND triggered_at >= ?
+                ORDER BY triggered_at DESC LIMIT 1
+                """,
+                (sym, int(rule_id), cutoff),
+            )
+        else:
+            existing = await db.execute(
+                """
+                SELECT id FROM alerts
+                WHERE symbol = ? AND rule_id IS NULL AND rule_type IS ? AND message = ? AND triggered_at >= ?
+                ORDER BY triggered_at DESC LIMIT 1
+                """,
+                (sym, rule_type, message, cutoff),
+            )
+        existing_row = await existing.fetchone()
+        if existing_row:
+            return int(existing_row["id"])
+
         cur = await db.execute(
             """
             INSERT INTO alerts (symbol, rule_id, rule_type, message, triggered_at, buy_score, details_json)
@@ -742,16 +760,23 @@ async def recent_alerts(limit: int = 50) -> list[dict]:
         return out
 
 
+def _first_present(*values, default=None):
+    for value in values:
+        if value is not None:
+            return value
+    return default
+
+
 def _get_metric(row: dict, key: str, default=None):
     """Helper to dig buy_score / rvol etc from snapshot row or analyze payload."""
     m = row.get("metrics") or row.get("m") or {}
     if key == "buy_score":
-        return row.get("buy_score") or row.get("score") or m.get("buy_score") or m.get("score") or default
+        return _first_present(row.get("buy_score"), m.get("buy_score"), row.get("score"), m.get("score"), default=default)
     if key == "rvol":
-        return m.get("rvol") or m.get("relative_volume") or row.get("rvol") or default
+        return _first_present(m.get("rvol"), m.get("relative_volume"), row.get("rvol"), default=default)
     if key == "score":
-        return row.get("score") or m.get("score") or default
-    return m.get(key, row.get(key, default))
+        return _first_present(row.get("score"), m.get("score"), default=default)
+    return _first_present(m.get(key), row.get(key), default=default)
 
 
 async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: list[dict] | None = None) -> list[dict]:
@@ -827,10 +852,10 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
 
     for rule in enabled_rules:
         cond = rule.get("condition") or {}
-        min_bs = cond.get("min_buy_score") or cond.get("min_score")
-        min_rvol = cond.get("min_rvol") or cond.get("rvol")
+        min_bs = _first_present(cond.get("min_buy_score"), cond.get("min_score"))
+        min_rvol = _first_present(cond.get("min_rvol"), cond.get("rvol"))
         has_investor = bool(cond.get("has_investor") or cond.get("has_smart_money") or cond.get("smart_money"))
-        earnings_days = cond.get("earnings_within_days") or cond.get("earnings_in_days")
+        earnings_days = _first_present(cond.get("earnings_within_days"), cond.get("earnings_in_days"))
         investor_types = cond.get("investor_types") or []  # e.g. ["india_legend","politician"]
         rule_type = rule.get("rule_type", "custom")
         if rule_type in {"smart_money", "investor"}:
@@ -919,6 +944,171 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
 
     return triggered
 
+
+            def _as_float(v):
+                if v is None or v == "":
+                    return None
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return None
+
+            bs_f = _as_float(bs)
+            rvol_f = _as_float(rvol)
+            sc_f = _as_float(sc)
+
+            metrics = row.get("metrics") or {}
+            sm = metrics.get("smart_money") or row.get("smart_money") or {}
+            if not isinstance(sm, dict):
+                sm = {}
+            sm_hits = sm.get("hits") or []
+            row_alerts = row.get("alerts") or []
+
+            inv_events_for_sym = investor_map.get(sym, [])
+            investor_kinds = []
+            investor_names = []
+
+            for hit in sm_hits:
+                if isinstance(hit, dict):
+                    if hit.get("kind"):
+                        investor_kinds.append(str(hit.get("kind")).lower())
+                    if hit.get("name"):
+                        investor_names.append(str(hit.get("name")))
+
+            for ev in inv_events_for_sym:
+                kind = ev.get("kind") or ev.get("investor_type") or ev.get("event_type")
+                if kind:
+                    investor_kinds.append(str(kind).lower())
+                name = ev.get("investor_name") or ev.get("actor_name") or ev.get("name")
+                if name:
+                    investor_names.append(str(name))
+
+            alert_text_has_investor = any(
+                "LEGEND" in str(a).upper()
+                or "WHALE" in str(a).upper()
+                or "POLITICIAN" in str(a).upper()
+                or "SMART MONEY" in str(a).upper()
+                or "FOREIGN BUY" in str(a).upper()
+                for a in row_alerts
+            )
+
+            row_has_investor = bool(
+                metrics.get("has_smart_money")
+                or sm_hits
+                or inv_events_for_sym
+                or alert_text_has_investor
+            )
+
+            required_investor_types = [str(x).lower() for x in investor_types]
+            needs_investor = has_investor or bool(required_investor_types) or rule_type == "smart_money"
+
+            if min_bs is not None:
+                min_bs_f = _as_float(min_bs)
+                if bs_f is None or min_bs_f is None or bs_f < min_bs_f:
+                    match = False
+                else:
+                    reasons.append(f"buy_score {bs_f:.1f} >= {min_bs_f:g}")
+
+            if min_rvol is not None:
+                min_rvol_f = _as_float(min_rvol)
+                if rvol_f is None or min_rvol_f is None or rvol_f < min_rvol_f:
+                    match = False
+                else:
+                    reasons.append(f"rvol {rvol_f:.1f} >= {min_rvol_f:g}")
+
+            if needs_investor:
+                if not row_has_investor:
+                    match = False
+                else:
+                    reasons.append("smart money / investor signal")
+
+                if required_investor_types:
+                    def _kind_matches(req: str, kind: str) -> bool:
+                        if req == kind:
+                            return True
+                        if req == "politician" and "politician" in kind:
+                            return True
+                        return req in kind
+
+                    type_ok = any(
+                        _kind_matches(req, kind)
+                        for req in required_investor_types
+                        for kind in investor_kinds
+                    )
+                    if not type_ok:
+                        match = False
+                    else:
+                        reasons.append(f"investor_type matched {','.join(required_investor_types)}")
+
+            if rule_type == "earnings" and earnings_days is None:
+                earnings_days = 3
+
+            if earnings_days is not None:
+                edays = _first_present(
+                    _get_metric(row, "days_until_earnings"),
+                    (row.get("earnings") or {}).get("days_until"),
+                )
+                if edays is None:
+                    for e in (data or {}).get("earnings") or []:
+                        if (e.get("symbol") or "").upper() == sym:
+                            edays = e.get("days_until")
+                            break
+
+                edays_f = _as_float(edays)
+                earnings_days_f = _as_float(earnings_days)
+
+                if edays_f is None or earnings_days_f is None or edays_f < 0 or edays_f > earnings_days_f:
+                    match = False
+                else:
+                    reasons.append(f"earnings within {earnings_days_f:g} days")
+
+            # Avoid firing catch-all empty rules.
+            if (
+                min_bs is None
+                and min_rvol is None
+                and not needs_investor
+                and earnings_days is None
+            ):
+                match = False
+
+            if not match:
+                continue
+
+            seen_trigger_keys.add(key)
+
+            primary_alert = sm.get("primary_alert")
+            investor_name = investor_names[0] if investor_names else None
+            if primary_alert:
+                message = f"{primary_alert} ({sym})"
+            elif needs_investor and investor_name:
+                message = f"🚨 Investor: {investor_name} signal on {sym}"
+            else:
+                message = f"Alert rule #{rule['id']} matched {sym}: {', '.join(reasons)}"
+
+            triggered.append(
+                {
+                    "symbol": sym,
+                    "rule_id": rule["id"],
+                    "rule_type": rule_type,
+                    "message": message,
+                    "buy_score": bs_f if bs_f is not None else sc_f,
+                    "ts": utc_now(),
+                    "details": {
+                        "condition": cond,
+                        "reasons": reasons,
+                        "score": sc_f,
+                        "buy_score": bs_f,
+                        "rvol": rvol_f,
+                        "has_investor": row_has_investor,
+                        "investor_name": investor_name,
+                        "investor_types": investor_kinds,
+                        "smart_money_hits": sm_hits[:5],
+                        "investor_events": inv_events_for_sym[:5],
+                    },
+                }
+            )
+
+    return triggered
 
 # ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS (v1) ============
 
