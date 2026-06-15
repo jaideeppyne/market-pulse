@@ -338,6 +338,44 @@ async def api_symbol(symbol: str, refresh: bool = False):
 
     raw = unquote(symbol).strip()
     upper = raw.upper()
+
+    # Company / common name → ticker resolver so users can type "micron", "nvidia", "reliance" etc.
+    # Reuses spirit of the news alias system but for direct search/analyze input.
+    NAME_TO_TICKER = {
+        "MICRON": "MU",
+        "MICRON TECHNOLOGY": "MU",
+        "MICRON TECH": "MU",
+        "NVIDIA": "NVDA",
+        "NVDA": "NVDA",
+        "GOOGLE": "GOOGL",
+        "GOOG": "GOOGL",
+        "AMAZON": "AMZN",
+        "META": "META",
+        "FACEBOOK": "META",
+        "RELIANCE": "RELIANCE.NS",
+        "RELIANCE INDUSTRIES": "RELIANCE.NS",
+        "TCS": "TCS.NS",
+        "TATA CONSULTANCY": "TCS.NS",
+        "INFOSYS": "INFY.NS",
+        "HDFC BANK": "HDFCBANK.NS",
+        "HDFCBANK": "HDFCBANK.NS",
+        "ICICI BANK": "ICICIBANK.NS",
+        "SBIN": "SBIN.NS",
+        "SBI": "SBIN.NS",
+        "TATA MOTORS": "TATAMOTORS.NS",
+        "ADANI": "ADANIENT.NS",
+        "APPLE": "AAPL",
+    }
+    resolved = NAME_TO_TICKER.get(upper, upper)
+    if resolved == upper:
+        # fuzzy contains match for longer company names users actually type
+        for alias, tkr in NAME_TO_TICKER.items():
+            if alias in upper or upper in alias:
+                resolved = tkr
+                break
+    if resolved != upper:
+        upper = resolved
+
     candidates = [upper]
     if not upper.endswith(".NS") and not upper.endswith(".BO"):
         candidates.append(upper + ".NS")
@@ -423,13 +461,20 @@ async def api_symbol(symbol: str, refresh: bool = False):
         return {"error": f"analysis failed: {e}", "symbol": raw}
 
     # Build payload identical in shape to live scan results
+    company_name = (
+        (info or {}).get("longName")
+        or (info or {}).get("shortName")
+        or (info or {}).get("displayName")
+        or norm_sym
+    )
     payload = {
         "symbol": norm_sym,
+        "name": company_name,
         "market": market,
         "score": sig.score,
         "signals": sig.signals,
         "alerts": sig.alerts,
-        "metrics": sig.metrics,
+        "metrics": {**(sig.metrics or {}), "name": company_name},
         "factors_hit": sig.factors_hit,
         "factors_total": sig.factors_total,
         "factor_details": sig.factor_details,

@@ -128,7 +128,7 @@ class ScannerLoop:
                 # Full lists reserved for Discover/Full Exhaustive (which inject into hot).
                 # This small core lets the live scanner succeed quickly and populate both US and India hot tabs with real stocks.
                 # Prioritize India.
-                core_us = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "V", "MA", "UNH", "JNJ", "PG", "HD", "CVX", "MRK", "ABBV", "BAC", "WMT", "XOM", "CRM", "COST", "AVGO", "AMD", "NFLX"][:25]
+                core_us = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "V", "MA", "UNH", "JNJ", "PG", "HD", "CVX", "MRK", "ABBV", "BAC", "WMT", "XOM", "CRM", "COST", "AVGO", "AMD", "MU", "NFLX"][:26]
                 core_india = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "TITAN.NS", "BAJFINANCE.NS", "HCLTECH.NS", "WIPRO.NS", "SUNPHARMA.NS", "NTPC.NS", "POWERGRID.NS", "ONGC.NS", "NESTLEIND.NS", "TATAMOTORS.NS", "M&M.NS", "ADANIENT.NS", "JSWSTEEL.NS", "TATASTEEL.NS", "TECHM.NS", "HINDALCO.NS"][:25]
                 pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india]
                 async with self.state.lock:
