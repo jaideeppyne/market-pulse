@@ -60,6 +60,11 @@ markets:
     use_nifty50: true
     use_nifty500_sample: true
     extra_symbols_file: "data/india_extra.txt"
+  uk:
+    enabled: true
+    # FTSE 100 + liquid London names (.L suffix); expand via data/uk_extra.txt
+    use_ftse100: true
+    extra_symbols_file: "data/uk_extra.txt"
 
 news:
   max_headlines_per_feed: 50

@@ -723,7 +723,7 @@ async def insert_alert(
             {
                 "event_key": f"alert:{sym}:{now[:19]}",
                 "symbol": sym,
-                "market": "us" if not sym.endswith((".NS", ".BO")) else "india",
+                "market": "india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us",
                 "event_type": "alert_trigger",
                 "severity": 8.0 if "INVESTOR" in (message or "").upper() or "SMART" in (message or "").upper() else 5.0,
                 "source": "alert_rule",

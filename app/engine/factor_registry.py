@@ -140,7 +140,7 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
         h.append(FactorHit("high_short", "risk", f"High short {short*100:.0f}%", 0, "HIGH SHORT"))
     avg_vol = i.get("averageVolume") or i.get("averageVolume10days")
     dollar_vol = (avg_vol or 0) * ctx.price
-    min_liq = 3_000_000 if ctx.market == "us" else 50_000_000
+    min_liq = 3_000_000 if ctx.market in ("us", "uk") else 50_000_000
     if dollar_vol >= min_liq:
         add("float_liquidity", "ownership", "Adequate trading liquidity", 1.0)
 

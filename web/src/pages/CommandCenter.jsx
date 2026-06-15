@@ -36,7 +36,7 @@ export default function CommandCenter() {
   const stats = data?.stats || {}
   const counts = useSelector((s) => {
     const d = s.live.data
-    return { us: d?.hot_by_market?.us?.length || 0, india: d?.hot_by_market?.india?.length || 0 }
+    return { us: d?.hot_by_market?.us?.length || 0, india: d?.hot_by_market?.india?.length || 0, uk: d?.hot_by_market?.uk?.length || 0 }
   })
   const [triggerDiscover, discoverState] = useLazyDiscoverQuery()
   const [startFullScan, fullScanState] = useStartFullScanMutation()
@@ -106,11 +106,10 @@ export default function CommandCenter() {
               <h2>Hot Movers</h2>
               <span className="panel__sub">ranked by buy score</span>
               <div className="tabs market-filters">
-                {[['all', 'All', null], ['us', 'US', '#60A5FA'], ['india', 'India', '#FB923C']].map(([v, l, dot]) => (
+                {[['all', 'All', null], ['us', 'US', '#60A5FA'], ['india', 'India', '#FB923C'], ['uk', 'UK', '#A78BFA']].map(([v, l, dot]) => (
                   <button key={v} className={'tab2' + (ui.marketFilter === v ? ' active' : '')} onClick={() => dispatch(setMarketFilter(v))}>
                     {dot && <span className="tab__dot" style={{ background: dot }} />}{l}
-                    {v === 'us' && counts.us ? <span className="tab__count">{counts.us}</span> : null}
-                    {v === 'india' && counts.india ? <span className="tab__count">{counts.india}</span> : null}
+                    {counts[v] ? <span className="tab__count">{counts[v]}</span> : null}
                   </button>
                 ))}
               </div>

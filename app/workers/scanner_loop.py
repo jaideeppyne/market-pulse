@@ -85,6 +85,8 @@ class ScannerLoop:
             pairs.append((sym, "us"))
         for sym in self.state.universe.get("india", []):
             pairs.append((sym, "india"))
+        for sym in self.state.universe.get("uk", []):
+            pairs.append((sym, "uk"))
         return pairs
 
     async def news_loop(self) -> None:
@@ -130,7 +132,8 @@ class ScannerLoop:
                 # Prioritize India.
                 core_us = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "V", "MA", "UNH", "JNJ", "PG", "HD", "CVX", "MRK", "ABBV", "BAC", "WMT", "XOM", "CRM", "COST", "AVGO", "AMD", "MU", "NFLX"][:26]
                 core_india = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "TITAN.NS", "BAJFINANCE.NS", "HCLTECH.NS", "WIPRO.NS", "SUNPHARMA.NS", "NTPC.NS", "POWERGRID.NS", "ONGC.NS", "NESTLEIND.NS", "TATAMOTORS.NS", "M&M.NS", "ADANIENT.NS", "JSWSTEEL.NS", "TATASTEEL.NS", "TECHM.NS", "HINDALCO.NS"][:25]
-                pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india]
+                core_uk = ["SHEL.L", "AZN.L", "HSBA.L", "ULVR.L", "BP.L", "RIO.L", "GSK.L", "DGE.L", "BATS.L", "GLEN.L", "BARC.L", "LLOY.L", "NWG.L", "VOD.L", "BT-A.L", "TSCO.L", "BA.L", "RR.L", "LSEG.L", "REL.L", "NG.L", "AAL.L", "PRU.L", "LGEN.L", "AV.L"][:25]
+                pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india] + [(sym, "uk") for sym in core_uk]
                 async with self.state.lock:
                     events_by_symbol = {
                         sym: list(events)
@@ -141,7 +144,7 @@ class ScannerLoop:
                     if sym in seen_pairs:
                         continue
                     event_market = (events[0] or {}).get("market") if events else None
-                    market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "us")
+                    market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us")
                     pairs.append((sym, market))
                     seen_pairs.add(sym)
                 pairs, skipped_quarantined = self._eligible_pairs(pairs)
@@ -162,7 +165,7 @@ class ScannerLoop:
                         break
                     chunk = pairs[i : i + batch_size]
                     batch_index += 1
-                    by_market: dict[str, list[str]] = {"us": [], "india": []}
+                    by_market: dict[str, list[str]] = {"us": [], "india": [], "uk": []}
                     for sym, mkt in chunk:
                         by_market[mkt].append(sym)
                     async with self.state.lock:
@@ -355,7 +358,7 @@ class ScannerLoop:
         self._running = True
         self._universe_flat = set(self.state.universe.get("us", [])) | set(
             self.state.universe.get("india", [])
-        )
+        ) | set(self.state.universe.get("uk", []))
         # Run cleanup once immediately, then on schedule
         rcfg = self.cfg.get("retention", {})
         try:

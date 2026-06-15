@@ -387,8 +387,13 @@ async def api_symbol(symbol: str, refresh: bool = False):
                 if data:
                     return data
 
-    # On-demand full analysis for any ticker (US or India)
-    market = "india" if any(c.endswith((".NS", ".BO")) for c in candidates) else "us"
+    # On-demand full analysis for any ticker (US, India, or UK)
+    if any(c.endswith((".NS", ".BO")) for c in candidates):
+        market = "india"
+    elif upper.endswith(".L"):
+        market = "uk"
+    else:
+        market = "us"
     norm_sym = upper
     if market == "india" and not norm_sym.endswith(".NS"):
         norm_sym = norm_sym + ".NS"
@@ -647,7 +652,7 @@ async def api_add_portfolio(request: Request, payload: dict = Body(...)):
     notes = str(payload.get("notes") or "")[:1000] or None
     sl = _as_positive_float(payload.get("sl"), "sl")
     target = _as_positive_float(payload.get("target"), "target")
-    market = str(payload.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "us"))
+    market = str(payload.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "uk" if symbol.endswith(".L") else "us"))
     pos_id = await upsert_portfolio_position(symbol, market, qty, entry_price, entry_score, notes, sl, target)
     await record_trade_journal(symbol, "buy", price=entry_price, qty=qty, score_at_time=entry_score, notes=notes, linked_position_id=pos_id)
     return {"ok": True, "id": pos_id, **(await _portfolio_payload())}
@@ -1063,7 +1068,7 @@ async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180)
             for sym, (hist, info, calendar) in raw.items():
                 if hist is None or hist.empty or len(hist) < 5:
                     continue
-                market = "india" if sym.endswith((".NS", ".BO")) else "us"
+                market = "india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us"
                 nt = news_titles_map.get(sym, [])[:12]
                 earn = earn_map.get(sym)
                 try:

@@ -217,7 +217,7 @@ def derive_news_events(news_items: list[dict[str, Any]], universe_flat: set[str]
             continue
         syms = item.get("symbols") or extract_tickers_from_text(title, universe_flat)
         for sym in syms[:5]:
-            market = "india" if sym.endswith((".NS", ".BO")) else "us"
+            market = "india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us"
             event_type = "promoter_or_insider_buy" if is_buy else "bulk_block_deal"
             if market == "us" and is_buy:
                 event_type = "news_insider_buy"

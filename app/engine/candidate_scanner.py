@@ -76,7 +76,7 @@ def build_event_candidates(
         candidates.append(
             {
                 "symbol": symbol,
-                "market": strongest.get("market") or scan.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "us"),
+                "market": strongest.get("market") or scan.get("market") or ("india" if symbol.endswith((".NS", ".BO")) else "uk" if symbol.endswith(".L") else "us"),
                 "candidate_score": round(candidate_score, 1),
                 "event_type": event_type,
                 "event_count": len(ordered),

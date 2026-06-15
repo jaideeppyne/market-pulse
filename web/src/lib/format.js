@@ -2,7 +2,15 @@ export const DISPLAY_LIMIT = 220
 
 export function marketOf(row = {}) {
   const sym = String(row.symbol || '').toUpperCase()
-  return row.market || row.metrics?.market || (sym.endsWith('.NS') || sym.endsWith('.BO') ? 'india' : 'us')
+  if (row.market || row.metrics?.market) return row.market || row.metrics?.market
+  if (sym.endsWith('.NS') || sym.endsWith('.BO')) return 'india'
+  if (sym.endsWith('.L')) return 'uk'
+  return 'us'
+}
+
+export const CURRENCY = { india: '₹', uk: '£', us: '$' }
+export function currencyOf(row = {}) {
+  return CURRENCY[marketOf(row)] || '$'
 }
 
 export function rankScore(row = {}) {
@@ -55,6 +63,7 @@ export function getHotPool(data = {}, marketFilter = 'all') {
     ...(data.hot || []),
     ...((data.hot_by_market && data.hot_by_market.us) || []),
     ...((data.hot_by_market && data.hot_by_market.india) || []),
+    ...((data.hot_by_market && data.hot_by_market.uk) || []),
     ...(data.discoveries || []),
   ]
   const seen = new Set()

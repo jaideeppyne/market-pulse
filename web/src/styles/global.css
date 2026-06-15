@@ -221,6 +221,7 @@ input::placeholder{color:var(--muted);}
 .mkt{flex:0 0 auto;width:22px;height:22px;border-radius:6px;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:var(--mono);}
 .mkt.us{color:var(--blue-2);background:rgba(96,165,250,.1);border:1px solid rgba(96,165,250,.3);}
 .mkt.in{color:var(--saffron-2);background:rgba(249,115,22,.1);border:1px solid rgba(249,115,22,.3);}
+.mkt.uk{color:#A78BFA;background:rgba(139,92,246,.12);border:1px solid rgba(139,92,246,.32);}
 .sym-main{min-width:0;}
 .sym__ticker{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--text);}
 .sym__price{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;margin-left:7px;}

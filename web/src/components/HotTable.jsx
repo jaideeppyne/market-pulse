@@ -1,7 +1,7 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { selectSymbol, openFactors } from '../store/uiSlice'
 import { useAddWatchMutation, useAddPositionMutation } from '../store/api'
-import { getHotPool, filterAndSort, rankScore, buyTier, confTier, rvolTier, marketOf, hasSmartMoney, factorsDisplay, DISPLAY_LIMIT } from '../lib/format'
+import { getHotPool, filterAndSort, rankScore, buyTier, confTier, rvolTier, marketOf, hasSmartMoney, factorsDisplay, CURRENCY, DISPLAY_LIMIT } from '../lib/format'
 import Sparkline from '../lib/Sparkline'
 
 function catalystBadges(r, buy) {
@@ -56,7 +56,9 @@ export default function HotTable() {
             const day = Number(m.day_chg_pct ?? 0)
             const dayCls = day >= 0 ? 'pos' : 'neg'
             const mkt = marketOf(r)
-            const cur = mkt === 'india' ? '₹' : '$'
+            const cur = CURRENCY[mkt] || '$'
+            const mktCls = mkt === 'india' ? 'in' : mkt === 'uk' ? 'uk' : 'us'
+            const mktLbl = mkt === 'india' ? 'IN' : mkt === 'uk' ? 'UK' : 'US'
             const cf = confTier(m.confidence_score)
             const watched = false
             const sym = r.symbol
@@ -65,7 +67,7 @@ export default function HotTable() {
               <tr key={sym} className={selected === sym ? 'selected' : ''} onClick={() => dispatch(selectSymbol(sym))}>
                 <td className="col-sym">
                   <div className="sym">
-                    <span className={'mkt ' + (mkt === 'india' ? 'in' : 'us')}>{mkt === 'india' ? 'IN' : 'US'}</span>
+                    <span className={'mkt ' + mktCls}>{mktLbl}</span>
                     <button className="tiny tiny-watch" title="Add to My List" onClick={(e) => { e.stopPropagation(); addWatch({ symbol: sym }) }}>☆</button>
                     <button className="tiny" title="One-click paper buy" onClick={(e) => { e.stopPropagation(); addPosition({ symbol: sym, qty: 100, entry_price: m.price, entry_score: buy }).unwrap().catch(() => {}) }}>📁</button>
                     <span className="sym-main">

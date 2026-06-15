@@ -99,6 +99,22 @@ NIFTY_BROADER = [
     "VEDL.NS", "VOLTAS.NS", "WHIRLPOOL.NS", "WIPRO.NS", "ZEEL.NS", "ZYDUSWELL.NS"
 ]
 
+# FTSE 100 + liquid UK names (London Stock Exchange — yfinance uses the .L suffix).
+FTSE_100 = [
+    "SHEL.L", "AZN.L", "HSBA.L", "ULVR.L", "BP.L", "RIO.L", "GSK.L", "DGE.L", "BATS.L",
+    "GLEN.L", "REL.L", "LSEG.L", "NG.L", "BARC.L", "LLOY.L", "NWG.L", "STAN.L", "PRU.L",
+    "AAL.L", "ANTO.L", "RKT.L", "CPG.L", "VOD.L", "BT-A.L", "TSCO.L", "SBRY.L", "NXT.L",
+    "ABF.L", "IMB.L", "BA.L", "RR.L", "EXPN.L", "III.L", "SGE.L", "AUTO.L", "SMIN.L",
+    "HLN.L", "CRH.L", "FLTR.L", "ENT.L", "WTB.L", "IHG.L", "CCL.L", "MNG.L", "AV.L",
+    "LGEN.L", "ADM.L", "PHNX.L", "SDR.L", "STJ.L", "ABDN.L", "HL.L", "BNZL.L", "DCC.L",
+    "RTO.L", "FERG.L", "WPP.L", "ITV.L", "PSON.L", "INF.L", "SPX.L", "HALMA.L", "RMV.L",
+    "SGRO.L", "LAND.L", "BLND.L", "UU.L", "SVT.L", "SSE.L", "CNA.L", "DRX.L",
+    "JD.L", "BDEV.L", "PSN.L", "TW.L", "BKG.L", "MRO.L", "WEIR.L", "MGGT.L", "RR.L",
+    "OCDO.L", "DPLM.L", "CTEC.L", "EDV.L", "FRES.L", "ENDV.L", "MNDI.L", "SMDS.L",
+    "CRDA.L", "JMAT.L", "SVT.L", "PSH.L", "SMT.L", "FCIT.L", "BNKR.L",
+    "TATE.L", "DARK.L", "WISE.L", "CWK.L", "GAW.L", "TRN.L",
+]
+
 NASDAQ_100_SAMPLE = [
     "AAPL", "MSFT", "AMZN", "NVDA", "META", "GOOGL", "GOOG", "TSLA", "AVGO", "COST",
     "NFLX", "AMD", "ADBE", "PEP", "CSCO", "INTC", "CMCSA", "QCOM", "TXN", "AMGN",
@@ -157,6 +173,16 @@ SP500_SAMPLE = [
     "JNJ", "PFE", "ABT", "TMO", "DHR", "BMY", "AMT", "PLD", "CCI", "EQIX",
     "SPG", "O", "PSA", "WELL", "AVB", "EQR", "DLR", "SBAC", "WY", "VTR",
 ]
+
+
+def market_for_symbol(sym: str) -> str:
+    """Map a ticker to its market: india (.NS/.BO), uk (.L), else us."""
+    s = (sym or "").upper()
+    if s.endswith((".NS", ".BO")):
+        return "india"
+    if s.endswith(".L"):
+        return "uk"
+    return "us"
 
 
 def _read_extra(path: Path) -> list[str]:
@@ -330,6 +356,7 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
     markets = cfg.get("markets", {})
     us: set[str] = set()
     india: set[str] = set()
+    uk: set[str] = set()
 
     if markets.get("us", {}).get("enabled", True):
         ucfg = markets["us"]
@@ -387,6 +414,14 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
         except Exception:
             pass
 
+    if markets.get("uk", {}).get("enabled", True):
+        kcfg = markets.get("uk", {})
+        if kcfg.get("use_ftse100", True):
+            uk.update(FTSE_100)
+        uk.update(_read_extra(ROOT / kcfg.get("extra_symbols_file", "data/uk_extra.txt")))
+        # Ensure every UK symbol carries the .L suffix yfinance expects.
+        uk = {s if s.endswith(".L") else f"{s}.L" for s in uk if s}
+
     # Normalize India symbols
     india_norm = set()
     for s in india:
@@ -397,6 +432,7 @@ def build_universe(cfg: dict) -> dict[str, list[str]]:
     return {
         "us": sorted(us),
         "india": sorted(india_norm),
+        "uk": sorted(uk),
     }
 
 

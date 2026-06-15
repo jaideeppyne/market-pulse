@@ -228,7 +228,7 @@ async def full_exhaustive_scan(
                         info['major_holders'] = holders.to_dict()
                 except:
                     pass
-                market = "india" if sym.endswith((".NS", ".BO")) else "us"
+                market = "india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us"
                 nt = news_titles.get(sym, [])[:15]
                 earn = earnings_map.get(sym)
                 nc = news_counts.get(sym, 0)

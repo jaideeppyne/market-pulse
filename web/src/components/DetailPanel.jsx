@@ -2,7 +2,7 @@ import { useSelector, useDispatch } from 'react-redux'
 import { useAnalyzeQuery } from '../store/api'
 import { openFactors, selectSymbol } from '../store/uiSlice'
 import { useAddWatchMutation, useAddPositionMutation } from '../store/api'
-import { buyTier, confTier, marketOf, factorsDisplay } from '../lib/format'
+import { buyTier, confTier, marketOf, factorsDisplay, CURRENCY } from '../lib/format'
 import Sparkline from '../lib/Sparkline'
 
 export default function DetailPanel() {
@@ -44,7 +44,7 @@ export default function DetailPanel() {
   const cf = confTier(m.confidence_score)
   const day = Number(m.day_chg_pct ?? 0)
   const dayCls = day >= 0 ? 'pos' : 'neg'
-  const cur = marketOf(row) === 'india' ? '₹' : '$'
+  const cur = CURRENCY[marketOf(row)] || '$'
   const { hit, total } = factorsDisplay(row)
   const passed = (row.factor_breakdown || []).filter((x) => x.status === 'pass')
   const risk = (row.factor_breakdown || []).filter((x) => x.status === 'risk')

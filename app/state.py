@@ -96,11 +96,14 @@ class AppState:
         # or small during partial scans). Uses recent scores from the live state.
         all_us = [x for x in all_items if x.get("market") == "us"]
         all_india = [x for x in all_items if x.get("market") == "india"]
+        all_uk = [x for x in all_items if x.get("market") == "uk"]
         all_us.sort(key=self._buy_rank, reverse=True)
         all_india.sort(key=self._buy_rank, reverse=True)
+        all_uk.sort(key=self._buy_rank, reverse=True)
         self.hot_by_market = {
             "us": all_us[:50],   # top 50 US by current score for the US tab
             "india": all_india[:50],  # top 50 India by current score for the India tab
+            "uk": all_uk[:50],   # top 50 UK by current score for the UK tab
         }
         self.sectors = build_sector_summary(
             self.symbols, hot_threshold=threshold
@@ -318,7 +321,7 @@ class AppState:
                 is_india = bool(s.endswith(".NS") or s.endswith(".BO"))
                 buzz_item = {
                     "symbol": s,
-                    "market": "india" if is_india else "us",
+                    "market": "india" if is_india else "uk" if s.endswith(".L") else "us",
                     "earnings_date": ed_str,
                     "days_until": days_until,
                     "eps_avg": None,
@@ -379,7 +382,7 @@ class AppState:
                             is_india = s.endswith(".NS")
                             buzz.append({
                                 "symbol": s,
-                                "market": "india" if is_india else "us",
+                                "market": "india" if is_india else "uk" if s.endswith(".L") else "us",
                                 "earnings_date": ed_str,
                                 "days_until": days_until,
                                 "eps_avg": None,

@@ -51,6 +51,7 @@ export default function Topbar() {
       <div className="pills">
         <span className="pill"><span className="pill__dot" style={{ background: '#34D77F' }} /><span className="pill__label">US</span><span className="pill__value" style={{ color: '#34D77F' }}>LIVE</span></span>
         <span className="pill"><span className="pill__dot" style={{ background: '#FB923C' }} /><span className="pill__label">IN</span><span className="pill__value" style={{ color: '#FB923C' }}>LIVE</span></span>
+        <span className="pill"><span className="pill__dot" style={{ background: '#A78BFA' }} /><span className="pill__label">UK</span><span className="pill__value" style={{ color: '#A78BFA' }}>LIVE</span></span>
         <span className="pill"><span className="pill__dot" style={{ background: '#38BDF8' }} /><span className="pill__label">SCAN</span><span className="pill__value" style={{ color: '#56C6F5' }}>{scanVal}</span></span>
         <span className={'pill status-pill ' + (status === 'live' ? 'live' : status === 'down' ? 'down' : '')}>
           {status === 'live' ? '● Live' : status === 'down' ? 'Reconnecting…' : 'Connecting…'}
