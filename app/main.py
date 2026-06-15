@@ -18,6 +18,7 @@ from app.db import (
     init_db,
     recent_news,
     recent_strong_snapshots,
+    recent_strong_snapshots_with_outcomes,
     snapshots_for_symbol,
     upcoming_earnings,
 )
@@ -297,14 +298,69 @@ async def api_earnings(days: int = 7):
     }
 
 
+async def get_regime() -> dict:
+    """Light stub regime awareness (high VIX or broad market trend) using a couple indices.
+    Reuses yf (same as outcomes computation). Noted in edge response + UI; does not alter core scoring engine.
+    """
+    try:
+        import yfinance as yf
+        from datetime import timedelta, datetime
+        vix_hist = yf.download("^VIX", period="10d", progress=False, auto_adjust=True)
+        vix = float(vix_hist["Close"].iloc[-1]) if not vix_hist.empty else 20.0
+        # Broad US trend via SPY 1m vs 20d ago; simple bias
+        spy_hist = yf.download("SPY", period="30d", progress=False, auto_adjust=True)
+        trend = "neutral"
+        if not spy_hist.empty and len(spy_hist) > 5:
+            c_now = float(spy_hist["Close"].iloc[-1])
+            c_20 = float(spy_hist["Close"].iloc[0])
+            chg = (c_now / c_20 - 1) * 100
+            trend = "bullish" if chg > 1.5 else ("bearish" if chg < -2.0 else "neutral")
+        # India proxy (NIFTY 50 ETF or index) - tolerant
+        try:
+            ind_hist = yf.download("^NSEI", period="20d", progress=False, auto_adjust=True)
+            ind_trend = "neutral"
+            if not ind_hist.empty and len(ind_hist) > 3:
+                ic_now = float(ind_hist["Close"].iloc[-1])
+                ic_old = float(ind_hist["Close"].iloc[0])
+                ind_trend = "bullish" if (ic_now / ic_old - 1) > 0.01 else ("bearish" if (ic_now / ic_old - 1) < -0.015 else "neutral")
+            if ind_trend != "neutral":
+                trend = ind_trend  # last one wins or could blend
+        except Exception:
+            pass
+        high_vix = vix >= 25.0
+        note = (
+            "High VIX regime (>25) — size positions smaller, favor names with confidence_score >80 + quality"
+            if high_vix else f"VIX ~{vix:.1f} · market {trend} bias"
+        )
+        return {
+            "vix": round(vix, 1),
+            "trend": trend,
+            "high_vol": high_vix,
+            "note": note,
+            "as_of": datetime.utcnow().isoformat() + "Z",
+        }
+    except Exception as e:
+        return {"vix": 20.0, "trend": "neutral", "high_vol": False, "note": "regime data unavailable", "error": str(e)[:60]}
+
+
+@app.get("/api/regime")
+async def api_regime():
+    """Lightweight market regime note (VIX + trend from indices). Used by edge + frontend pills."""
+    return await get_regime()
+
+
 @app.get("/api/edge")
 async def api_edge(days: int = 2, min_score: float = 55.0):
     """Backtest / historical edge view with forward outcomes.
-    Recent strong snapshots + computed 1d/3d/7d/14d returns, max DD, hit rates by score bucket,
-    and basic factor win-rate hints (from payload). Self-validating engine.
+    Rich stats: hit rates by bucket for 1d/3d/7d/14d, max DD aggregates, confidence breakdowns,
+    simple factor performance (which passed factors historically showed edge in snapshots).
+    Uses recent_strong_snapshots_with_outcomes (enhanced yf-at-query-time with cache) + payload confidence/buy/quality from price_crawler + analyze engine.
+    Self-validating; no new engine invented.
     """
     snaps = await recent_strong_snapshots_with_outcomes(days=days, min_score=min_score, limit=120)
-    # Group by approximate window
+    regime = await get_regime()
+
+    # Group by approximate window (preserve full promoted fields for UI)
     by_time: dict[str, list] = {}
     for s in snaps:
         key = s.get("created_at", "")[:13]
@@ -312,44 +368,179 @@ async def api_edge(days: int = 2, min_score: float = 55.0):
             "symbol": s["symbol"],
             "market": s.get("market"),
             "score": round(s.get("score", 0), 1),
+            "buy_score": round(s.get("buy_score", s.get("score", 0)), 1),
+            "quality_score": s.get("quality_score"),
+            "confidence_score": s.get("confidence_score"),
             "created_at": s.get("created_at"),
             "has_smart_money": bool((s.get("payload") or {}).get("metrics", {}).get("smart_money", {}).get("hits")),
             "outcomes": s.get("outcomes"),
         })
-    # Compute aggregates for validation
+
+    # Valid samples that have full forward outcomes (reuse the yf computed ones)
     valid = [s for s in snaps if s.get("outcomes") and s["outcomes"].get("ret_7d") is not None]
     total = len(valid)
-    hit_7d = sum(1 for s in valid if s["outcomes"]["ret_7d"] > 0)
-    avg_ret7 = sum(s["outcomes"]["ret_7d"] for s in valid) / total if total else 0
-    # Buckets
-    buckets = {"70+": [], "60-70": [], "55-60": []}
+
+    # Overall by horizon (rich: all 1d/3d/7d/14d)
+    def horizon_stats(hkey):
+        vals = [s["outcomes"].get(hkey) for s in valid if s["outcomes"].get(hkey) is not None]
+        if not vals:
+            return {"n": 0, "hit_rate": 0, "avg_ret": 0}
+        hits = sum(1 for v in vals if v > 0)
+        return {
+            "n": len(vals),
+            "hit_rate": round(hits / len(vals) * 100, 1),
+            "avg_ret": round(sum(vals) / len(vals), 2),
+        }
+
+    overall = {
+        "1d": horizon_stats("ret_1d"),
+        "3d": horizon_stats("ret_3d"),
+        "7d": horizon_stats("ret_7d"),
+        "14d": horizon_stats("ret_14d"),
+    }
+
+    # Buckets by score (70+ etc) now with full horizons + max_dd
+    score_buckets = {"70+": [], "60-70": [], "55-60": []}
     for s in valid:
-        sc = s.get("score", 0)
-        if sc >= 70:
-            buckets["70+"].append(s["outcomes"]["ret_7d"])
-        elif sc >= 60:
-            buckets["60-70"].append(s["outcomes"]["ret_7d"])
-        else:
-            buckets["55-60"].append(s["outcomes"]["ret_7d"])
+        sc = s.get("buy_score") or s.get("score", 0)
+        bucket = "70+" if sc >= 70 else ("60-70" if sc >= 60 else "55-60")
+        score_buckets[bucket].append(s)
+
     bucket_stats = {}
-    for b, rets in buckets.items():
+    horizons = ["ret_1d", "ret_3d", "ret_7d", "ret_14d"]
+    for b, items in score_buckets.items():
+        if not items:
+            continue
+        bs = {"n": len(items)}
+        for h in horizons:
+            vals = [it["outcomes"].get(h) for it in items if it["outcomes"].get(h) is not None]
+            if vals:
+                hs = sum(1 for v in vals if v > 0)
+                bs[h] = {
+                    "hit_rate": round(hs / len(vals) * 100, 1),
+                    "avg_ret": round(sum(vals) / len(vals), 2),
+                    "n": len(vals),
+                }
+        # max DD for bucket
+        dds = [it["outcomes"].get("max_dd_14d", 0) for it in items if it["outcomes"].get("max_dd_14d") is not None]
+        if dds:
+            bs["avg_max_dd_14d"] = round(sum(dds) / len(dds), 2)
+            bs["worst_max_dd_14d"] = round(min(dds), 2)
+        bucket_stats[b] = bs
+
+    # Confidence breakdowns (reuse the confidence_score heuristic from price_crawler full scan + regular scan)
+    conf_buckets = {"high>80": [], "med60-80": [], "low<60": []}
+    for s in valid:
+        c = s.get("confidence_score") or 70
+        if c >= 80:
+            conf_buckets["high>80"].append(s)
+        elif c >= 60:
+            conf_buckets["med60-80"].append(s)
+        else:
+            conf_buckets["low<60"].append(s)
+    conf_breakdown = {}
+    for cb, items in conf_buckets.items():
+        if not items:
+            continue
+        vals7 = [it["outcomes"].get("ret_7d") for it in items if it["outcomes"].get("ret_7d") is not None]
+        dds = [it["outcomes"].get("max_dd_14d", 0) for it in items if it["outcomes"].get("max_dd_14d") is not None]
+        cb_stats = {"n": len(items)}
+        if vals7:
+            hs = sum(1 for v in vals7 if v > 0)
+            cb_stats["hit_7d"] = round(hs / len(vals7) * 100, 1)
+            cb_stats["avg_ret7d"] = round(sum(vals7) / len(vals7), 2)
+        if dds:
+            cb_stats["avg_max_dd"] = round(sum(dds)/len(dds), 2)
+        conf_breakdown[cb] = cb_stats
+
+    # Overall max DD aggregates
+    all_dds = [s["outcomes"].get("max_dd_14d") for s in valid if s["outcomes"].get("max_dd_14d") is not None]
+    mdd_summary = {}
+    if all_dds:
+        mdd_summary = {
+            "avg_max_dd_14d": round(sum(all_dds) / len(all_dds), 2),
+            "median_max_dd_14d": round(sorted(all_dds)[len(all_dds)//2], 2),
+            "n": len(all_dds),
+        }
+
+    # Simple factor performance mini table (which factors had best historical edge from snapshots)
+    # Reuses factor_breakdown already stored in payloads from engine (scoring + factor_registry)
+    from collections import defaultdict
+    factor_perf = defaultdict(lambda: {"n": 0, "pos7": 0, "sum_ret7": 0.0, "sum_dd": 0.0, "dd_n": 0})
+    for s in valid:
+        fb = s.get("factor_breakdown") or []
+        ret7 = s["outcomes"].get("ret_7d")
+        dd = s["outcomes"].get("max_dd_14d")
+        for f in fb:
+            if (f.get("status") or "").lower() != "pass":
+                continue
+            fid = f.get("id") or f.get("name") or str(f)[:30]
+            fp = factor_perf[fid]
+            fp["n"] += 1
+            if ret7 is not None:
+                fp["sum_ret7"] += ret7
+                if ret7 > 0:
+                    fp["pos7"] += 1
+            if dd is not None:
+                fp["sum_dd"] += dd
+                fp["dd_n"] += 1
+    # rank by hit rate + sample size + avg ret; keep top ~8
+    factor_rows = []
+    for fid, st in factor_perf.items():
+        if st["n"] < 2:
+            continue
+        hit = round(st["pos7"] / st["n"] * 100, 1) if st["n"] else 0
+        avg_r = round(st["sum_ret7"] / st["n"], 2) if st["n"] else 0
+        avg_d = round(st["sum_dd"] / st["dd_n"], 2) if st["dd_n"] else 0
+        factor_rows.append({
+            "factor": fid,
+            "n": st["n"],
+            "hit_rate_7d": hit,
+            "avg_ret_7d": avg_r,
+            "avg_max_dd": avg_d,
+        })
+    factor_rows.sort(key=lambda x: (x["hit_rate_7d"], x["n"], x["avg_ret_7d"]), reverse=True)
+    top_factor_edge = factor_rows[:8]
+
+    # Legacy bucket_stats kept for compat (now 7d focused), plus new rich ones
+    legacy_buckets = {"70+": [], "60-70": [], "55-60": []}
+    for s in valid:
+        sc = s.get("buy_score") or s.get("score", 0)
+        if sc >= 70:
+            legacy_buckets["70+"].append(s["outcomes"]["ret_7d"])
+        elif sc >= 60:
+            legacy_buckets["60-70"].append(s["outcomes"]["ret_7d"])
+        else:
+            legacy_buckets["55-60"].append(s["outcomes"]["ret_7d"])
+    legacy_bucket_stats = {}
+    for b, rets in legacy_buckets.items():
         if rets:
-            bucket_stats[b] = {
+            legacy_bucket_stats[b] = {
                 "n": len(rets),
                 "hit_rate": round(sum(1 for r in rets if r > 0) / len(rets) * 100, 1),
                 "avg_ret7d": round(sum(rets) / len(rets), 2),
             }
+
     summary = {
         "windows": len(by_time),
         "total_signals": len(snaps),
         "valid_with_outcomes": total,
-        "hit_rate_7d": round(hit_7d / total * 100, 1) if total else 0,
-        "avg_ret_7d": round(avg_ret7, 2),
-        "bucket_stats": bucket_stats,
+        # rich horizon stats
+        "overall": overall,
+        "hit_rate_7d": overall.get("7d", {}).get("hit_rate", 0),
+        "avg_ret_7d": overall.get("7d", {}).get("avg_ret", 0),
+        # legacy compat
+        "bucket_stats": legacy_bucket_stats,
+        # new rich bucket + mdd + conf + factors
+        "bucket_stats_by_horizon": bucket_stats,
+        "mdd_summary": mdd_summary,
+        "confidence_breakdown": conf_breakdown,
+        "top_factor_edge": top_factor_edge,
         "min_score": min_score,
         "days": days,
+        "regime": regime,
     }
-    return {"summary": summary, "signals": snaps[:60], "by_window": by_time}
+    return {"summary": summary, "signals": snaps[:60], "by_window": by_time, "regime": regime}
 
 
 @app.get("/api/discover")

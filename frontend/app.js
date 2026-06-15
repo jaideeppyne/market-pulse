@@ -223,6 +223,15 @@
     return `<button type="button" class="factor-pill" data-symbol="${attrEsc(row.symbol)}" title="View all factors">${hit}/${total}</button>`;
   }
 
+  // Prominent confidence pills (wired in hot rows + detail). Color + always visible when present.
+  // Reuses the confidence_score populated by price_crawler (regular + full scans) + now promoted via /api/edge snapshots.
+  function confPill(c) {
+    if (c == null) return "";
+    const cls = c >= 80 ? "conf-high" : (c >= 60 ? "conf-med" : "conf-low");
+    const label = `Data confidence ${c} (crawler: info completeness, hist length, volume, news/earnings coverage, market)`;
+    return `<span class="conf-pill ${cls}" title="${attrEsc(label)}">${c}</span>`;
+  }
+
   /* --- Tab navigation --- */
   document.querySelectorAll(".tab").forEach((btn) => {
     const tab = btn.dataset.tab;
@@ -1518,7 +1527,7 @@
         }
         return `<tr class="${sel} ${flash}${whale ? " row-whale" : ""}" data-symbol="${attrEsc(r.symbol)}">
           <td><span class="rank-num">${idx + 1}</span> <strong class="clickable" data-act="select">${r.symbol}</strong>${ext}${discBadge}${fullBadge}${whaleClickable}${investorLine}<br><span class="sym-name">${escapeHtml(m.name || "")}</span> <button class="tiny-watch" data-watch="${attrEsc(r.symbol)}" title="Add/remove from My List">${watched}</button></td>
-          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${r.confidence_score != null ? `<span class="qual-pill" style="font-size:0.6rem;padding:1px 3px;background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence">${r.confidence_score}</span>` : ""}</td>
+          <td><span class="score-pill clickable" data-act="factors" title="Click: what boosted the buy score? (entry + S+ catalyst heavy) — opens full weighted checklist">${buy}</span>${confPill(r.confidence_score)}</td>
           <td><span class="qual-pill clickable" data-act="factors" title="Overall quality checklist score. Click to inspect all pass/fail factors.">${qual}</span></td>
           <td class="factor-cell">${factorPill(r)}</td>
           <td class="${cls} clickable" data-act="factors" title="Day % move contributes to momentum + rvol factors. Large moves with volume can create catalyst or distribution flags.">${day > 0 ? "+" : ""}${day}%</td>
@@ -1650,7 +1659,7 @@
       <div class="detail-score-row">
         Buy <strong class="big-score clickable" data-act="factors" title="Click to see exactly which factors drove this buy score (weighted) and the full checklist">${m.buy_score ?? row.score}</strong>
         <span class="qual-pill clickable" data-act="factors" title="Quality score = broad checklist health (fundamentals + valuation + technicals). Click for breakdown">${m.quality_score ?? "—"}</span>
-        ${m.confidence_score != null ? `<span class="qual-pill" style="background:rgba(34,197,94,0.15);color:#86efac" title="Data confidence: missing fundamentals/stale price/low volume/weak news/earnings source/market coverage">${m.confidence_score}</span>` : ""}
+        ${confPill(m.confidence_score)}
         ${m.is_extended ? '<span class="ext-badge">Extended — late chase</span>' : ""}
         <button type="button" class="factor-pill detail-factor-btn" data-symbol="${attrEsc(row.symbol)}" title="Open the complete 100+ factor pass/fail with weights and tiers">${hit}/${total} factors</button>
       </div>

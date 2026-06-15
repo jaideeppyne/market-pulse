@@ -427,37 +427,52 @@ async def insert_investor_event(event: dict[str, Any]) -> None:
 async def recent_strong_snapshots_with_outcomes(days: int = 2, min_score: float = 55.0, limit: int = 80) -> list[dict]:
     """Return recent high-conviction snapshots with computed forward returns, drawdown, hit rate etc.
     This makes the engine self-validating by attaching post-signal outcomes using historical prices.
+    Enhanced: per-symbol yf cache (computed at query time, avoids re-fetch for multi-snap symbols),
+    promotes confidence/buy/quality + factor data for edge stats + UI.
     """
     snaps = await recent_strong_snapshots(days=days, min_score=min_score, limit=limit)
-    # Compute outcomes for each
+    # Per-symbol closes cache so we yf only once per unique ticker even if multiple snaps
+    _closes_cache: dict[str, "pd.Series"] = {}
+    try:
+        import pandas as pd  # yf returns pandas; engine already uses it
+    except Exception:
+        pd = None
     for s in snaps:
         try:
             payload = s.get("payload") or {}
-            price_at = payload.get("metrics", {}).get("price")
+            # Promote key fields for /api/edge + frontend use (reuse existing payload from price_crawler/analyze)
+            s["buy_score"] = payload.get("buy_score") or payload.get("score") or s.get("score")
+            s["quality_score"] = payload.get("quality_score")
+            s["confidence_score"] = payload.get("confidence_score")
+            s["factor_breakdown"] = payload.get("factor_breakdown") or payload.get("factor_details") or []
             created = s.get("created_at")
-            if not price_at or not created:
+            if not created:
                 s["outcomes"] = {"error": "insufficient data at signal time"}
                 continue
             sym = s["symbol"]
-            # Fetch historical prices around signal time + forward windows
-            # Use yf to get daily closes from signal-1d to signal+15d or so
+            # Lazy import (kept local like original to avoid hard dep at module load)
             import yfinance as yf
             from datetime import datetime, timedelta
             dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            start = (dt - timedelta(days=2)).date()
-            end = (dt + timedelta(days=16)).date()
-            hist = yf.download(sym, start=str(start), end=str(end), progress=False, auto_adjust=True)
-            if hist.empty:
+            if sym not in _closes_cache:
+                start = (dt - timedelta(days=3)).date()
+                end = (dt + timedelta(days=17)).date()
+                hist = yf.download(sym, start=str(start), end=str(end), progress=False, auto_adjust=True)
+                if hist is None or hist.empty:
+                    _closes_cache[sym] = None
+                else:
+                    _closes_cache[sym] = hist["Close"] if "Close" in hist.columns else None
+            closes = _closes_cache.get(sym)
+            if closes is None or len(closes) == 0:
                 s["outcomes"] = {"error": "no historical price data"}
                 continue
-            closes = hist["Close"]
             # Find closest price at or just before signal (use last available before dt)
             idx = closes.index.get_indexer([dt], method="pad")[0]
             if idx < 0:
                 s["outcomes"] = {"error": "no price at signal time"}
                 continue
             p0 = float(closes.iloc[idx])
-            # Forward prices
+            # Forward prices (relative to THIS signal time)
             def fwd_price(days):
                 fwd_dt = dt + timedelta(days=days)
                 fidx = closes.index.get_indexer([fwd_dt], method="bfill")[0]
@@ -468,12 +483,12 @@ async def recent_strong_snapshots_with_outcomes(days: int = 2, min_score: float 
             p3 = fwd_price(3)
             p7 = fwd_price(7)
             p14 = fwd_price(14)
-            # Max drawdown in window (simplified: min close / p0 -1 in next 14d)
-            window_closes = closes.iloc[idx:idx+15] if idx+15 < len(closes) else closes.iloc[idx:]
+            # Max drawdown in forward window (simplified min close / p0 -1 )
+            window_closes = closes.iloc[idx:idx+16] if idx+16 < len(closes) else closes.iloc[idx:]
             if len(window_closes) > 1:
                 mdd = (window_closes.min() / p0 - 1) * 100
             else:
-                mdd = 0
+                mdd = 0.0
             ret1 = ((p1 / p0 - 1) * 100) if p1 else None
             ret3 = ((p3 / p0 - 1) * 100) if p3 else None
             ret7 = ((p7 / p0 - 1) * 100) if p7 else None
