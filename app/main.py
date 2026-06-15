@@ -33,7 +33,6 @@ from app.db import (
     recent_alerts,
     recent_market_events,
     recent_news,
-    recent_strong_snapshots,
     recent_strong_snapshots_with_outcomes,
     record_trade_journal,
     snapshots_for_symbol,
@@ -738,7 +737,6 @@ async def get_regime() -> dict:
     """
     try:
         import yfinance as yf
-        from datetime import timedelta, datetime
         vix_hist = yf.download("^VIX", period="10d", progress=False, auto_adjust=True)
         vix = float(vix_hist["Close"].iloc[-1]) if not vix_hist.empty else 20.0
         # Broad US trend via SPY 1m vs 20d ago; simple bias
