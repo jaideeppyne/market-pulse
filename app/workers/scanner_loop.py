@@ -136,15 +136,22 @@ class ScannerLoop:
                         partial=True,
                         batch_index=batch_index,
                         batch_total=batch_total,
+                        attempted_count=len(chunk),
                     )
                     await asyncio.sleep(delay)
 
+                if pairs and not all_results:
+                    logger.warning(
+                        "Price scan produced zero results from %d attempted symbols",
+                        len(pairs),
+                    )
                 await self.state.update_scan(
                     all_results,
                     threshold,
                     partial=False,
                     batch_index=batch_total,
                     batch_total=batch_total,
+                    attempted_count=len(pairs),
                 )
                 # Refresh earnings panel with latest scores
                 async with self.state.lock:

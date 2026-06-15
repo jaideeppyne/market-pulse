@@ -4,12 +4,13 @@ import asyncio
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,12 +27,15 @@ from app.db import (
     insert_alert,
     list_alert_rules,
     list_watchlist,
+    remove_from_watchlist,
     recent_alerts,
     recent_market_events,
+    recent_news,
     recent_strong_snapshots,
     recent_strong_snapshots_with_outcomes,
     snapshots_for_symbol,
     upcoming_earnings,
+    update_alert_rule_last_triggered,
 )
 from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
@@ -238,6 +242,56 @@ if FRONTEND.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
 
+_WRITE_KEY_ENV = "MARKET_PULSE_WRITE_KEY"
+_ALLOW_UNAUTH_WRITES_ENV = "MARKET_PULSE_ALLOW_UNAUTH_WRITES"
+_SYMBOL_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-]{0,19}$")
+_RULE_TYPE_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,40}$")
+
+
+def _is_local_client(request: Request) -> bool:
+    host = (request.client.host if request.client else "") or ""
+    return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _assert_write_allowed(request: Request) -> None:
+    """Guard persistent mutations for public deployments.
+
+    Local development stays frictionless. Public/server deployments should set
+    MARKET_PULSE_WRITE_KEY and send it via X-API-Key, or explicitly set
+    MARKET_PULSE_ALLOW_UNAUTH_WRITES=1 if they accept unauthenticated writes.
+    """
+    if os.getenv(_ALLOW_UNAUTH_WRITES_ENV) == "1":
+        return
+    configured_key = os.getenv(_WRITE_KEY_ENV)
+    if configured_key:
+        provided = request.headers.get("x-api-key")
+        if provided == configured_key:
+            return
+        raise HTTPException(status_code=401, detail="valid X-API-Key required for write operation")
+    if _is_local_client(request):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=f"write operations require {_WRITE_KEY_ENV} for non-local clients",
+    )
+
+
+def _validate_symbol(symbol: str) -> str:
+    sym = symbol.strip().upper()
+    if not sym or not _SYMBOL_RE.match(sym):
+        raise HTTPException(status_code=400, detail="invalid symbol")
+    return sym
+
+
+def _validate_alert_condition(condition: object) -> dict:
+    if not isinstance(condition, dict):
+        raise HTTPException(status_code=400, detail="condition must be an object")
+    encoded = json.dumps(condition, separators=(",", ":"))
+    if len(encoded) > 4096:
+        raise HTTPException(status_code=400, detail="condition too large")
+    return condition
+
+
 @app.get("/")
 async def index():
     index_path = FRONTEND / "index.html"
@@ -391,9 +445,75 @@ async def api_symbol(symbol: str, refresh: bool = False):
 
 @app.get("/api/news")
 async def api_news(limit: int = 80):
-    db_news = await recent_news(limit)
+    safe_limit = max(1, min(limit, 500))
+    db_news = await recent_news(safe_limit)
     snap = await state.snapshot()
-    return {"live": snap.get("news", []), "stored": db_news}
+    return {"live": snap.get("news", []), "stored": db_news, "limit": safe_limit}
+
+
+@app.get("/api/watchlist")
+async def api_watchlist():
+    watches = await list_watchlist()
+    return {"watches": watches, "count": len(watches)}
+
+
+@app.post("/api/watchlist")
+async def api_add_watchlist(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    symbol = _validate_symbol(str(payload.get("symbol") or ""))
+    notes = str(payload.get("notes") or "")[:500]
+    ok = await add_to_watchlist(symbol, notes=notes)
+    watches = await list_watchlist()
+    async with state.lock:
+        state.watches = watches
+    state.broadcast_event.set()
+    return {"ok": ok, "symbol": symbol, "watches": watches}
+
+
+@app.delete("/api/watchlist/{symbol:path}")
+async def api_delete_watchlist(symbol: str, request: Request):
+    _assert_write_allowed(request)
+    sym = _validate_symbol(symbol)
+    await remove_from_watchlist(sym)
+    watches = await list_watchlist()
+    async with state.lock:
+        state.watches = watches
+    state.broadcast_event.set()
+    return {"ok": True, "symbol": sym, "watches": watches}
+
+
+@app.get("/api/alert_rules")
+async def api_alert_rules():
+    rules = await list_alert_rules()
+    return {"rules": rules, "count": len(rules)}
+
+
+@app.post("/api/alert_rules")
+async def api_add_alert_rule(request: Request, payload: dict = Body(...)):
+    _assert_write_allowed(request)
+    rule_type = str(payload.get("rule_type") or "custom").strip() or "custom"
+    if not _RULE_TYPE_RE.match(rule_type):
+        raise HTTPException(status_code=400, detail="invalid rule_type")
+    condition = _validate_alert_condition(payload.get("condition") or {})
+    enabled = bool(payload.get("enabled", True))
+    rule_id = await add_alert_rule(rule_type, condition, enabled=enabled)
+    rules = await list_alert_rules()
+    rule = next((r for r in rules if r.get("id") == rule_id), None)
+    return {"ok": True, "id": rule_id, "rule": rule}
+
+
+@app.delete("/api/alert_rules/{rule_id:int}")
+async def api_delete_alert_rule(rule_id: int, request: Request):
+    _assert_write_allowed(request)
+    await delete_alert_rule(rule_id)
+    return {"ok": True, "id": rule_id}
+
+
+@app.get("/api/alerts/recent")
+async def api_recent_alerts(limit: int = 50):
+    safe_limit = max(1, min(limit, 200))
+    alerts = await recent_alerts(limit=safe_limit)
+    return {"alerts": alerts, "count": len(alerts), "limit": safe_limit}
 
 
 @app.get("/api/events")
