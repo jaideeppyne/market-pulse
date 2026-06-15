@@ -175,21 +175,27 @@ class ScannerLoop:
                     batch_results: list[dict] = []
                     for mkt, syms in by_market.items():
                         if syms:
-                            try:
-                                res = await scan_symbols(
-                                    syms,
-                                    mkt,
-                                    self._news_counts,
-                                    weights,
-                                    earn_map,
-                                    news_titles,
-                                    events_by_symbol,
-                                )
-                                batch_results.extend(res)
-                                all_results.extend(res)
-                                self._record_symbol_health(syms, res)
-                            except Exception:
-                                logger.warning("Price batch error for %s market (skipped for resilience)", mkt)
+                            # Split the (already small) live core into tiny sub-batches of 5 with sleep.
+                            # yf free tier rate limits kill large-ish batches even for "core" lists, leading to 0 results.
+                            # This makes live hot movers actually populate with real US/India stocks.
+                            for j in range(0, len(syms), 5):
+                                sub = syms[j:j+5]
+                                try:
+                                    res = await scan_symbols(
+                                        sub,
+                                        mkt,
+                                        self._news_counts,
+                                        weights,
+                                        earn_map,
+                                        news_titles,
+                                        events_by_symbol,
+                                    )
+                                    batch_results.extend(res)
+                                    all_results.extend(res)
+                                    self._record_symbol_health(sub, res)
+                                except Exception:
+                                    logger.warning("Price sub-batch error for %s (skipped)", mkt)
+                                await asyncio.sleep(1.5)  # gentle sleep to respect yf free limits for live scan
                     # Live UI update after each batch (re-sort hot list immediately)
                     await self.state.update_scan(
                         batch_results,
