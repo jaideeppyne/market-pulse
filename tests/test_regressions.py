@@ -55,21 +55,19 @@ def test_alert_rule_evaluator_triggers_on_score_and_rvol(tmp_path):
         )
     )
 
-    assert result == [
-        {
-            "symbol": "ACME",
-            "rule_id": rule_id,
-            "rule_type": "score",
-            "message": "🚨 ACME: buy score 80 >= 65; RVOL 3.0 >= 2.0",
-            "buy_score": 80,
-            "details": {
-                "score": 80,
-                "buy_score": 80,
-                "rvol": 3.0,
-                "reasons": ["buy score 80 >= 65", "RVOL 3.0 >= 2.0"],
-            },
-        }
-    ]
+    # Rich evaluator output (includes condition, ts, standardized reasons, investor fields, float buy_score)
+    assert len(result) == 1
+    trig = result[0]
+    assert trig["symbol"] == "ACME"
+    assert trig["rule_id"] == rule_id
+    assert trig["rule_type"] == "score"
+    assert "buy_score 80.0 >= 65" in trig["message"]
+    assert trig["buy_score"] == 80.0 or trig["buy_score"] == 80
+    det = trig["details"]
+    assert det["buy_score"] == 80.0 or det["buy_score"] == 80
+    assert det["rvol"] == 3.0
+    assert "buy_score" in det["reasons"][0].lower() or "buy score" in det["reasons"][0].lower()
+    assert "has_investor" in det
 
 
 def test_state_news_earnings_buzz_parses_date():

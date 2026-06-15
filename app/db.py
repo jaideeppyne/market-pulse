@@ -817,35 +817,18 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
         if s:
             earnings_map[s] = item
 
-    def as_float(value):
-        if value is None or value == "":
+    def as_float(v):
+        if v is None or v == "":
             return None
         try:
-            return float(value)
+            return float(v)
         except (TypeError, ValueError):
             return None
 
+    _as_float = as_float
+
     def display(value) -> str:
         return str(value)
-
-    def smart_money_hits(row: dict, sym: str) -> list:
-        metrics = row.get("metrics") or {}
-        smart_money = metrics.get("smart_money") or row.get("smart_money") or {}
-        hits = smart_money.get("hits") if isinstance(smart_money, dict) else smart_money
-        if hits is None:
-            hits = []
-        if isinstance(hits, (str, dict)):
-            hits = [hits]
-        return list(hits) + investor_map.get(sym, [])
-
-    def event_matches_type(event: dict, types: list[str]) -> bool:
-        if not types:
-            return True
-        haystack = " ".join(
-            str(event.get(k, ""))
-            for k in ("event_type", "investor_quality", "investor_name", "actor_role", "details")
-        ).lower()
-        return any(str(t).lower() in haystack for t in types)
 
     triggered: list[dict] = []
     seen_trigger_keys = set()  # avoid dup per (symbol,rule) in one eval pass
@@ -876,74 +859,162 @@ async def evaluate_rules_for_snapshot(data: dict | None = None, symbols_data: li
             match = True
             reasons: list[str] = []
 
+            bs_f = _as_float(bs)
+            rvol_f = _as_float(rvol)
+            sc_f = _as_float(sc)
+
+            metrics = row.get("metrics") or {}
+            sm = metrics.get("smart_money") or row.get("smart_money") or {}
+            if not isinstance(sm, dict):
+                sm = {}
+            sm_hits = sm.get("hits") or []
+            row_alerts = row.get("alerts") or []
+
+            inv_events_for_sym = investor_map.get(sym, [])
+            investor_kinds = []
+            investor_names = []
+
+            for hit in sm_hits:
+                if isinstance(hit, dict):
+                    if hit.get("kind"):
+                        investor_kinds.append(str(hit.get("kind")).lower())
+                    if hit.get("name"):
+                        investor_names.append(str(hit.get("name")))
+
+            for ev in inv_events_for_sym:
+                kind = ev.get("kind") or ev.get("investor_type") or ev.get("event_type")
+                if kind:
+                    investor_kinds.append(str(kind).lower())
+                name = ev.get("investor_name") or ev.get("actor_name") or ev.get("name")
+                if name:
+                    investor_names.append(str(name))
+
+            alert_text_has_investor = any(
+                "LEGEND" in str(a).upper()
+                or "WHALE" in str(a).upper()
+                or "POLITICIAN" in str(a).upper()
+                or "SMART MONEY" in str(a).upper()
+                or "FOREIGN BUY" in str(a).upper()
+                for a in row_alerts
+            )
+
+            row_has_investor = bool(
+                metrics.get("has_smart_money")
+                or sm_hits
+                or inv_events_for_sym
+                or alert_text_has_investor
+            )
+
+            required_investor_types = [str(x).lower() for x in investor_types]
+            needs_investor = has_investor or bool(required_investor_types) or rule_type == "smart_money"
+
             if min_bs is not None:
-                bs_num = as_float(bs)
-                min_bs_num = as_float(min_bs)
-                if bs_num is None or min_bs_num is None or bs_num < min_bs_num:
+                min_bs_f = _as_float(min_bs)
+                if bs_f is None or min_bs_f is None or bs_f < min_bs_f:
                     match = False
                 else:
-                    reasons.append(f"buy score {display(bs)} >= {display(min_bs)}")
+                    reasons.append(f"buy_score {bs_f:.1f} >= {min_bs_f:g}")
 
             if min_rvol is not None:
-                rvol_num = as_float(rvol)
-                min_rvol_num = as_float(min_rvol)
-                if rvol_num is None or min_rvol_num is None or rvol_num < min_rvol_num:
+                min_rvol_f = _as_float(min_rvol)
+                if rvol_f is None or min_rvol_f is None or rvol_f < min_rvol_f:
                     match = False
                 else:
-                    reasons.append(f"RVOL {display(rvol)} >= {display(min_rvol)}")
+                    reasons.append(f"rvol {rvol_f:.1f} >= {min_rvol_f:g}")
 
-            matching_investors = smart_money_hits(row, sym)
-            if has_investor:
-                matching_investors = [
-                    ev for ev in matching_investors
-                    if not isinstance(ev, dict) or event_matches_type(ev, investor_types)
-                ]
-                if not matching_investors:
+            if needs_investor:
+                if not row_has_investor:
                     match = False
                 else:
-                    reasons.append("smart money / investor activity")
+                    reasons.append("smart money / investor signal")
 
-            matched_earnings = None
+                if required_investor_types:
+                    def _kind_matches(req: str, kind: str) -> bool:
+                        if req == kind:
+                            return True
+                        if req == "politician" and "politician" in kind:
+                            return True
+                        return req in kind
+
+                    type_ok = any(
+                        _kind_matches(req, kind)
+                        for req in required_investor_types
+                        for kind in investor_kinds
+                    )
+                    if not type_ok:
+                        match = False
+                    else:
+                        reasons.append(f"investor_type matched {','.join(required_investor_types)}")
+
+            if rule_type == "earnings" and earnings_days is None:
+                earnings_days = 3
+
             if earnings_days is not None:
-                matched_earnings = row.get("earnings") or earnings_map.get(sym)
-                days_until = as_float((matched_earnings or {}).get("days_until"))
-                max_days = as_float(earnings_days)
-                if days_until is None or max_days is None or days_until > max_days:
+                edays = _first_present(
+                    _get_metric(row, "days_until_earnings"),
+                    (row.get("earnings") or {}).get("days_until"),
+                )
+                if edays is None:
+                    for e in (data or {}).get("earnings") or []:
+                        if (e.get("symbol") or "").upper() == sym:
+                            edays = e.get("days_until")
+                            break
+
+                edays_f = _as_float(edays)
+                earnings_days_f = _as_float(earnings_days)
+
+                if edays_f is None or earnings_days_f is None or edays_f < 0 or edays_f > earnings_days_f:
                     match = False
                 else:
-                    reasons.append(f"earnings within {display(earnings_days)} days")
+                    reasons.append(f"earnings within {earnings_days_f:g} days")
+
+            # Avoid firing catch-all empty rules.
+            if (
+                min_bs is None
+                and min_rvol is None
+                and not needs_investor
+                and earnings_days is None
+            ):
+                match = False
 
             if not match:
                 continue
 
-            if not reasons:
-                reasons.append(f"{rule_type} rule matched")
+            seen_trigger_keys.add(key)
 
-            details = {
-                "score": sc,
-                "buy_score": bs,
-                "rvol": rvol,
-                "reasons": reasons,
-            }
-            if matching_investors:
-                details["investor_events"] = matching_investors[:5]
-            if matched_earnings:
-                details["earnings"] = matched_earnings
+            primary_alert = sm.get("primary_alert")
+            investor_name = investor_names[0] if investor_names else None
+            if primary_alert:
+                message = f"{primary_alert} ({sym})"
+            elif needs_investor and investor_name:
+                message = f"🚨 Investor: {investor_name} signal on {sym}"
+            else:
+                message = f"Alert rule #{rule['id']} matched {sym}: {', '.join(reasons)}"
 
             triggered.append(
                 {
                     "symbol": sym,
                     "rule_id": rule["id"],
                     "rule_type": rule_type,
-                    "message": f"🚨 {sym}: {'; '.join(reasons)}",
-                    "buy_score": bs,
-                    "details": details,
+                    "message": message,
+                    "buy_score": bs_f if bs_f is not None else sc_f,
+                    "ts": utc_now(),
+                    "details": {
+                        "condition": cond,
+                        "reasons": reasons,
+                        "score": sc_f,
+                        "buy_score": bs_f,
+                        "rvol": rvol_f,
+                        "has_investor": row_has_investor,
+                        "investor_name": investor_name,
+                        "investor_types": investor_kinds,
+                        "smart_money_hits": sm_hits[:5],
+                        "investor_events": inv_events_for_sym[:5],
+                    },
                 }
             )
-            seen_trigger_keys.add(key)
 
     return triggered
-
 
 # ============ PORTFOLIO / PAPER TRADING JOURNAL HELPERS (v1) ============
 
