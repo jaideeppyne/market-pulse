@@ -7,6 +7,7 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -399,7 +400,7 @@ async def api_news(limit: int = 80):
 
 @app.get("/api/events")
 @app.get("/api/events/recent")
-async def api_events(limit: int = 100, symbol: str | None = None):
+async def api_events(limit: int = 100, symbol: Optional[str] = None):
     safe_limit = max(1, min(limit, 500))
     sym = symbol.upper() if symbol else None
     stored = await recent_market_events(limit=safe_limit, symbol=sym)

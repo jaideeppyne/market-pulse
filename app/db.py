@@ -127,8 +127,8 @@ async def init_db() -> None:
             "call_time": "ALTER TABLE earnings ADD COLUMN call_time TEXT",
             "from_news": "ALTER TABLE earnings ADD COLUMN from_news INTEGER DEFAULT 0",
             "news_title": "ALTER TABLE earnings ADD COLUMN news_title TEXT",
-            "created_at": "ALTER TABLE earnings ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
-            "updated_at": "ALTER TABLE earnings ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+            "created_at": "ALTER TABLE earnings ADD COLUMN created_at TEXT",
+            "updated_at": "ALTER TABLE earnings ADD COLUMN updated_at TEXT",
         }.items():
             if col not in existing_cols:
                 await db.execute(ddl)

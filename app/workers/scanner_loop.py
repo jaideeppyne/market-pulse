@@ -262,6 +262,8 @@ class ScannerLoop:
                     if ev.get("symbol"):
                         # In real: add to candidate queue for deep scan
                         pass
+                    # Trigger broadcast so rules eval (for smart_money / investor personalized alerts) + WS happens immediately
+                    self.state.broadcast_event.set()
                 logger.info("Insider loop: %d events (Form 4 / promoter / bulk)", len(events))
             except Exception as e:
                 logger.warning("Insider loop error (non-fatal): %s", e)
