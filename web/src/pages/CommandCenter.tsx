@@ -59,34 +59,17 @@ export default function CommandCenter() {
 
   return (
     <>
-      <section className="command-brief">
-        <div className="brief-copy">
-          <div className="brief-kicker">GPT-style market workspace</div>
-          <h1>Scan the tape, then drill into the exact reason.</h1>
-          <p>Live US + India opportunities, S+ smart-money activity, earnings pressure, news bursts, and full factor explainability in one first screen.</p>
-          <div className="brief-actions">
-            <button className="btn-primary" onClick={onAnalyze} title="Analyze the symbol in the search box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 11-6.2-8.5" /><path d="M21 3v6h-6" /></svg>
-              Analyze typed ticker
-            </button>
-            {['MU', 'NVDA', 'RELIANCE', 'SBIN.NS'].map((sym) => (
-              <button key={sym} className="btn-ghost small quick-chip" onClick={() => quickAnalyze(sym)}>{sym}</button>
-            ))}
-          </div>
-        </div>
-        <div className="brief-metrics">
-          <div><span>Hot pool</span><strong>{pool.length}</strong></div>
-          <div><span>70+ conviction</span><strong>{highConv}</strong></div>
-          <div><span>S+ names</span><strong>{smartMoney}</strong></div>
-          <div><span>News hits</span><strong>{data?.news?.length || 0}</strong></div>
-          <div><span>Events</span><strong>{data?.events?.length || stats.market_events_count || 0}</strong></div>
-          <div><span>Last scan</span><strong>{(stats.last_price_scan || stats.last_price_tick || '—').slice(11, 19) || '—'}</strong></div>
-        </div>
-      </section>
       <StatCards />
       <div className="cc-layout">
         <div className="cc-main">
           <div className="toolbar">
+            <button className="btn-primary" onClick={onAnalyze} title="Analyze the ticker in the top search box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 11-6.2-8.5" /><path d="M21 3v6h-6" /></svg>
+              Analyze
+            </button>
+            {['NVDA', 'RELIANCE', 'BP.L'].map((sym) => (
+              <button key={sym} className="btn-ghost small quick-chip" onClick={() => quickAnalyze(sym)}>{sym}</button>
+            ))}
             <button className="btn-secondary small" onClick={() => triggerDiscover()} disabled={discoverState.isFetching} title="Aggressive multi-website discovery scan">
               {discoverState.isFetching ? '🔍 Discovering…' : '🔍 Scan More'}
             </button>

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { setSearch, selectSymbol } from '../store/uiSlice'
 
 const TITLES = {
-  '/': 'Market Command', '/watchlist': 'Watchlist', '/portfolio': 'Portfolio',
+  '/': 'Command Center', '/watchlist': 'Watchlist', '/portfolio': 'Portfolio',
   '/radar': 'S+ Radar', '/sectors': 'Sector Map', '/earnings': 'Earnings',
   '/news': 'Live News', '/edge': 'Edge & Guide',
 }
@@ -31,7 +31,7 @@ export default function Topbar() {
   return (
     <header className="topbar">
       <div className="topbar__title">
-        <div className="topbar__eyebrow">Market Pulse</div>
+        <div className="topbar__eyebrow">Pulse Terminal</div>
         <div className="topbar__heading">{TITLES[pathname] || 'Command Center'}</div>
       </div>
 
@@ -40,7 +40,7 @@ export default function Topbar() {
         <input
           type="search"
           value={search}
-          placeholder="Ask for any ticker: NVDA, MU, RELIANCE, SBIN.NS…"
+          placeholder="Analyze any ticker — NVDA, RELIANCE, SBIN.NS, BP.L…"
           onChange={(e) => dispatch(setSearch(e.target.value))}
           onKeyDown={onKey}
           autoComplete="off"

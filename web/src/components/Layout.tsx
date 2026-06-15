@@ -4,6 +4,8 @@ import Topbar from './Topbar'
 export default function Layout({ children }) {
   return (
     <>
+      <div className="bg-glow-cyan" />
+      <div className="bg-glow-violet" />
       <div className="app">
         <Rail />
         <div className="center">
@@ -11,7 +13,7 @@ export default function Layout({ children }) {
           <div className="center__main">{children}</div>
         </div>
       </div>
-      <footer className="footer">Market Pulse · AI-style signal workspace · US + India scanner</footer>
+      <footer className="footer">Pulse Terminal · Market Pulse engine · US + India + UK scanner · Yahoo + RSS</footer>
     </>
   )
 }

@@ -16,3 +16,6 @@ export const store = configureStore({
 
 // open the live websocket
 store.dispatch({ type: 'ws/connect' })
+
+export type RootState = ReturnType<typeof store.getState>
+export type AppDispatch = typeof store.dispatch

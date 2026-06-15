@@ -1,23 +1,26 @@
-import { useSelector, useDispatch } from 'react-redux'
-import { useAnalyzeQuery } from '../store/api'
+import { useAnalyzeQuery, useAddWatchMutation, useAddPositionMutation } from '../store/api'
 import { openFactors, selectSymbol } from '../store/uiSlice'
-import { useAddWatchMutation, useAddPositionMutation } from '../store/api'
-import { buyTier, confTier, marketOf, factorsDisplay, CURRENCY } from '../lib/format'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import { confTier, marketOf, factorsDisplay, CURRENCY } from '../lib/format'
+import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
+import BuyScorePill from './ui/BuyScorePill'
+import MarketBadge from './ui/MarketBadge'
 
 export default function DetailPanel() {
-  const dispatch = useDispatch()
-  const sym = useSelector((s) => s.ui.selectedSymbol)
-  // try to find it already in the live snapshot first
-  const liveRow = useSelector((s) => {
+  const dispatch = useAppDispatch()
+  const sym = useAppSelector((s) => s.ui.selectedSymbol)
+  const liveRow = useAppSelector((s) => {
     if (!sym || !s.live.data) return null
-    const pools = [...(s.live.data.hot || []), ...((s.live.data.hot_by_market?.us) || []), ...((s.live.data.hot_by_market?.india) || [])]
+    const hbm = s.live.data.hot_by_market || {}
+    const pools = [...(s.live.data.hot || []), ...(hbm.us || []), ...(hbm.india || []), ...(hbm.uk || [])]
     return pools.find((r) => r.symbol === sym) || null
   })
   const needFetch = !!sym && (!liveRow || !liveRow.factor_breakdown)
   const { data: fetched, isFetching } = useAnalyzeQuery(sym, { skip: !needFetch })
   const [addWatch] = useAddWatchMutation()
   const [addPosition] = useAddPositionMutation()
+  const toast = useToast()
 
   const row = (fetched && fetched.symbol) ? fetched : liveRow
 
@@ -40,34 +43,38 @@ export default function DetailPanel() {
 
   const m = row.metrics
   const buy = Number(m.buy_score ?? row.score ?? 0)
-  const [tierCls, tierLbl] = buyTier(buy)
   const cf = confTier(m.confidence_score)
   const day = Number(m.day_chg_pct ?? 0)
   const dayCls = day >= 0 ? 'pos' : 'neg'
-  const cur = CURRENCY[marketOf(row)] || '$'
+  const mkt = marketOf(row)
+  const cur = CURRENCY[mkt] || '$'
   const { hit, total } = factorsDisplay(row)
   const passed = (row.factor_breakdown || []).filter((x) => x.status === 'pass')
   const risk = (row.factor_breakdown || []).filter((x) => x.status === 'risk')
   const failed = (row.factor_breakdown || []).filter((x) => x.status === 'fail')
 
+  const watch = () => { addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }
+  const paper = () => addPosition({ symbol: sym, qty: 100, entry_price: m.price, entry_score: buy }).unwrap()
+    .then(() => toast.push(`📁 Paper buy logged: ${sym}`, 'success'))
+    .catch(() => toast.push(`Paper buy failed for ${sym}`, 'error'))
+
   return (
     <div className="detail-panel">
       <h2 className="detail-panel__title">Stock detail</h2>
       <div className="detail">
-        <h3 onClick={() => dispatch(openFactors(sym))} title="Open factor breakdown">{row.symbol}</h3>
-        <div className="meta-line">{m.name || ''}{m.sector ? ` · ${m.sector}` : ''} · {marketOf(row).toUpperCase()}</div>
+        <h3 onClick={() => dispatch(openFactors(sym))} title="Open factor breakdown">
+          <MarketBadge market={mkt} /> {row.symbol}
+        </h3>
+        <div className="meta-line">{m.name || ''}{m.sector ? ` · ${m.sector}` : ''}</div>
         <div className="meta-line"><span className="sym__ticker">{cur}{m.price}</span> <span className={'day ' + dayCls}>{day > 0 ? '+' : ''}{day}%</span> <span className="muted">· rel vol {m.rvol ?? '—'}×</span></div>
 
         <div className="detail-score-row">
-          <span className={'buy ' + tierCls} onClick={() => dispatch(openFactors(sym))} title="Click for factor breakdown" style={{ cursor: 'pointer' }}>
-            <span className="buy__meta"><span className="buy__tier">{tierLbl}</span><div className="buy__q">Q {m.quality_score ?? '—'}</div></span>
-            <span className="buy__pill"><span>{Math.round(buy)}</span></span>
-          </span>
+          <BuyScorePill score={buy} quality={m.quality_score ?? '—'} onClick={() => dispatch(openFactors(sym))} />
           {m.confidence_score != null && <span className={'conf-pill conf-' + (cf === 'hi' ? 'high' : cf === 'mid' ? 'med' : 'low')}>Conf {m.confidence_score}</span>}
           {m.is_extended && <span className="ext-badge">Extended</span>}
         </div>
 
-        {row.sparkline?.length > 1 && <div className="spark-large"><Sparkline values={row.sparkline} w={300} h={70} /></div>}
+        {row.sparkline && row.sparkline.length > 1 && <div className="spark-large"><Sparkline values={row.sparkline} w={300} h={70} /></div>}
 
         <div className="factor-summary" style={{ cursor: 'pointer' }} onClick={() => dispatch(openFactors(sym))}>
           <span className="fs pass">{passed.length} passed</span>
@@ -85,12 +92,12 @@ export default function DetailPanel() {
           </>
         )}
 
-        {row.alerts?.length > 0 && <ul className="alerts">{row.alerts.slice(0, 6).map((a, i) => <li key={i}>{a}</li>)}</ul>}
+        {row.alerts && row.alerts.length > 0 && <ul className="alerts">{row.alerts.slice(0, 6).map((a, i) => <li key={i}>{a}</li>)}</ul>}
 
         <div className="thesis-head" style={{ marginTop: 12 }}>
           <button className="tiny" onClick={() => dispatch(openFactors(sym))}>Factors {hit}/{total}</button>
-          <button className="tiny" onClick={() => addWatch({ symbol: sym })}>★ Watch</button>
-          <button className="tiny" onClick={() => addPosition({ symbol: sym, qty: 100, entry_price: m.price, entry_score: buy }).unwrap().catch(() => {})}>📁 Paper</button>
+          <button className="tiny" onClick={watch}>★ Watch</button>
+          <button className="tiny" onClick={paper}>📁 Paper</button>
           <button className="tiny" onClick={() => dispatch(selectSymbol(null))}>Close</button>
         </div>
       </div>

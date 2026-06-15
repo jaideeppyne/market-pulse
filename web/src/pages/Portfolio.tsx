@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux'
 import { selectSymbol } from '../store/uiSlice'
 import {
   usePortfolioQuery, useJournalQuery, useAddPositionMutation,
-  useClosePositionMutation,
+  useClosePositionMutation, useLazyAnalyzeQuery,
 } from '../store/api'
 
 export default function Portfolio() {
@@ -12,22 +12,42 @@ export default function Portfolio() {
   const { data: jr } = useJournalQuery()
   const [addPosition] = useAddPositionMutation()
   const [closePosition] = useClosePositionMutation()
-  const [form, setForm] = useState({ symbol: '', qty: 100, sl: '', target: '', notes: '' })
+  const [triggerAnalyze] = useLazyAnalyzeQuery()
+  const [form, setForm] = useState({ symbol: '', qty: 100, entry: '', sl: '', target: '', notes: '' })
+  const [busy, setBusy] = useState(false)
 
   const positions = pf?.positions || []
   const journal = jr?.journal || []
   const summary = pf?.summary || {}
 
-  const submit = () => {
-    if (!form.symbol) return
-    addPosition({
-      symbol: form.symbol.toUpperCase(), qty: Number(form.qty) || 1,
-      entry_price: Number(form.entry_price) || undefined,
-      sl: form.sl ? Number(form.sl) : undefined,
-      target: form.target ? Number(form.target) : undefined,
-      notes: form.notes || undefined,
-    }).unwrap().then(() => setForm({ symbol: '', qty: 100, sl: '', target: '', notes: '' }))
-      .catch((e) => alert('Paper buy failed: ' + (e?.data?.detail || e?.error || 'error')))
+  const submit = async () => {
+    const symbol = form.symbol.trim().toUpperCase()
+    if (!symbol) return
+    setBusy(true)
+    try {
+      // Backend requires an entry_price; if the user didn't type one, resolve the
+      // live price via the same analyze engine (mirrors the close-position fallback).
+      let entryPrice = Number(form.entry) || undefined
+      if (!entryPrice) {
+        const row = await triggerAnalyze(symbol).unwrap().catch(() => null)
+        entryPrice = Number(row?.metrics?.price) || undefined
+      }
+      if (!entryPrice) {
+        alert('Could not resolve a price for ' + symbol + '. Enter an Entry $ manually.')
+        return
+      }
+      await addPosition({
+        symbol, qty: Number(form.qty) || 1, entry_price: entryPrice,
+        sl: form.sl ? Number(form.sl) : undefined,
+        target: form.target ? Number(form.target) : undefined,
+        notes: form.notes || undefined,
+      }).unwrap()
+      setForm({ symbol: '', qty: 100, entry: '', sl: '', target: '', notes: '' })
+    } catch (e) {
+      alert('Paper buy failed: ' + (e?.data?.detail || e?.error || 'error'))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
@@ -67,10 +87,11 @@ export default function Portfolio() {
         <div className="port-form-row">
           <input type="text" placeholder="SYMBOL" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} />
           <input type="number" placeholder="Qty" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+          <input type="number" placeholder="Entry $ (auto)" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} />
           <input type="number" placeholder="SL $" value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} />
           <input type="number" placeholder="Target $" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
           <input type="text" placeholder="Notes / thesis" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <button className="btn-primary" onClick={submit}>📁 Log Paper Buy</button>
+          <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Logging…' : '📁 Log Paper Buy'}</button>
         </div>
         <p className="muted small-note">Entry price pulled from live state / analyze if omitted. One position per symbol.</p>
       </div>
