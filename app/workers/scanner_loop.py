@@ -292,6 +292,7 @@ class ScannerLoop:
             self.event_loop(),
             self.price_loop(),
             self.quick_price_loop(),
+            self.india_quick_scan_loop(),  # dedicated for India focus / resilient India tab population
             self.earnings_loop(),
             self.insider_loop(),
             self.cleanup_loop(),
@@ -319,6 +320,46 @@ class ScannerLoop:
                     logger.info("Quick price refresh: %d hot symbols updated", n)
             except Exception:
                 logger.exception("Quick price loop error")
+
+    async def india_quick_scan_loop(self) -> None:
+        """Dedicated more frequent light scan for India symbols (to make India hot tab populate faster,
+        address India focus and empty India list issues). Runs separate from main price batches so
+        India names get scored/inserted into state even if global hot is US dominated or scan partial.
+        Uses small batches + the same engine. Skips if no India or during heavy load.
+        """
+        interval = self.cfg.get("scanner", {}).get("india_quick_interval_sec", 90)
+        chunk_size = 30  # small to be resilient and not overload yf
+        while self._running:
+            try:
+                await asyncio.sleep(interval)
+                india_syms = self.state.universe.get("india", [])
+                if not india_syms:
+                    continue
+                # rotating or first chunk for coverage
+                chunk = india_syms[:chunk_size]
+                async with self.state.lock:
+                    earn_map = dict(self.state.earnings_by_symbol)
+                    news_titles = dict(self.state.news_titles_by_symbol)
+                    events_by_symbol = {
+                        sym: list(events)
+                        for sym, events in self.state.events_by_symbol.items()
+                    }
+                res = await scan_symbols(
+                    chunk,
+                    "india",
+                    self._news_counts,
+                    self.cfg.get("signals", {}).get("weights", {}),
+                    earn_map,
+                    news_titles,
+                    events_by_symbol,
+                )
+                if res:
+                    await self.state.update_scan(
+                        res, self.state.hot_score_threshold or 38, partial=True
+                    )
+                    logger.info("India quick scan: %d symbols scored/updated (helps India tab)", len(res))
+            except Exception:
+                logger.exception("India quick scan loop error (non-fatal, continuing)")
 
     def stop(self) -> None:
         self._running = False

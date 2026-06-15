@@ -38,6 +38,7 @@ def _normalize_history_frame(data: pd.DataFrame, sym: str) -> pd.DataFrame:
     if isinstance(df.columns, pd.MultiIndex):
         return pd.DataFrame()
     df.columns = [str(c) for c in df.columns]
+    df = df.loc[:, ~df.columns.duplicated()]
     return df.dropna(how="all")
 
 
@@ -115,43 +116,51 @@ async def scan_symbols(
     news_titles_by_symbol = news_titles_by_symbol or {}
     events_by_symbol = events_by_symbol or {}
     results: list[dict[str, Any]] = []
-    for sym, (hist, info, calendar) in raw.items():
-        earn = earnings_by_symbol.get(sym)
-        sig = analyze_symbol(
-            sym,
-            market,
-            hist,
-            info,
-            news_counts.get(sym, 0),
-            weights,
-            earnings=earn,
-            news_titles=news_titles_by_symbol.get(sym, []),
-            market_events=events_by_symbol.get(sym, []),
-            calendar=calendar,
-        )
-        # confidence for regular scans too
-        conf = 100
-        if not info or len(info) < 10: conf -= 20
-        if len(hist) < 100: conf -= 15
-        vol = hist["Volume"].iloc[-1] if len(hist) > 0 else 0
-        if vol < 50000: conf -= 10
-        if market == "india": conf -= 5
-        conf = max(40, min(100, conf))
-        payload = {
-            "symbol": sym,
-            "market": market,
-            "score": sig.score,
-            "confidence_score": conf,
-            "signals": sig.signals,
-            "alerts": sig.alerts,
-            "metrics": sig.metrics,
-            "factors_hit": sig.factors_hit,
-            "factors_total": sig.factors_total,
-            "factor_details": sig.factor_details,
-            "factor_breakdown": sig.factor_breakdown,
-            "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()],
-        }
-        results.append(payload)
+    for sym, data in raw.items():
+        try:
+            hist, info, calendar = data or (None, {}, None)
+            if not hist or len(hist) < 10:
+                continue  # bad / delisted / insufficient - skip fast for resilience
+            earn = earnings_by_symbol.get(sym)
+            sig = analyze_symbol(
+                sym,
+                market,
+                hist,
+                info,
+                news_counts.get(sym, 0),
+                weights,
+                earnings=earn,
+                news_titles=news_titles_by_symbol.get(sym, []),
+                market_events=events_by_symbol.get(sym, []),
+                calendar=calendar,
+            )
+            # confidence for regular scans too
+            conf = 100
+            if not info or len(info) < 10: conf -= 20
+            if len(hist) < 100: conf -= 15
+            vol = hist["Volume"].iloc[-1] if len(hist) > 0 else 0
+            if vol < 50000: conf -= 10
+            if market == "india": conf -= 5
+            conf = max(40, min(100, conf))
+            payload = {
+                "symbol": sym,
+                "market": market,
+                "score": sig.score,
+                "confidence_score": conf,
+                "signals": sig.signals,
+                "alerts": sig.alerts,
+                "metrics": sig.metrics,
+                "factors_hit": sig.factors_hit,
+                "factors_total": sig.factors_total,
+                "factor_details": sig.factor_details,
+                "factor_breakdown": sig.factor_breakdown,
+                "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()],
+            }
+            results.append(payload)
+        except Exception as e:
+            # Skip bad/delisted/rate-limited tickers fast (resilience for India/US scans, prevents stalling on junk in extra lists)
+            logger.debug("scan skip %s: %s", sym, str(e)[:80])
+            continue
     annotate_ml_intel(results)
     for payload in results:
         if payload.get("score", 0) >= 40:

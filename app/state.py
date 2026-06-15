@@ -71,23 +71,18 @@ class AppState:
         )
         hot_all = [x for x in all_items if x.get("score", 0) >= threshold]
         self.hot = hot_all[:top_n]
-        # Global hot stays strict (above threshold, top N overall).
-        # Per-market lists are the *best currently scored* for that market (top N by score).
-        # This makes the "India" (and "US") tabs in the UI useful even when the global hot
-        # list is small or dominated by the other market, or early in a scan batch.
-        # We still respect a soft floor so very low-quality names don't pollute the market tab.
-        soft_floor = max(20, threshold * 0.6)  # e.g. ~23 if threshold=38
-        us = [x for x in all_items if x.get("market") == "us" and x.get("score", 0) >= soft_floor]
-        india = [
-            x
-            for x in all_items
-            if x.get("market") == "india" and x.get("score", 0) >= soft_floor
-        ]
-        us.sort(key=lambda x: x.get("score", 0), reverse=True)
-        india.sort(key=lambda x: x.get("score", 0), reverse=True)
+        # Global hot stays strict (names >= threshold, top N overall for the "Hot" stat and main view).
+        # For market tabs (India / US), ALWAYS surface the top scored for that market (top 50 by score,
+        # no or minimal threshold). This ensures the India tab in Hot Movers is never empty when there
+        # are any processed India names (addresses "still India list empty" even if global hot is US-heavy
+        # or small during partial scans). Uses recent scores from the live state.
+        all_us = [x for x in all_items if x.get("market") == "us"]
+        all_india = [x for x in all_items if x.get("market") == "india"]
+        all_us.sort(key=lambda x: x.get("score", 0), reverse=True)
+        all_india.sort(key=lambda x: x.get("score", 0), reverse=True)
         self.hot_by_market = {
-            "us": us[:top_n],
-            "india": india[:top_n],
+            "us": all_us[:50],   # top 50 US by current score for the US tab
+            "india": all_india[:50],  # top 50 India by current score for the India tab
         }
         self.sectors = build_sector_summary(
             self.symbols, hot_threshold=threshold
