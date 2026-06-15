@@ -123,18 +123,13 @@ class ScannerLoop:
 
         while self._running:
             try:
-                # For LIVE hot movers (the recommendations in the UI tabs), limit to a small core of reliable, active, liquid tickers only.
-                # This prevents the scanner from wasting time on the thousands of delisted/invalid/junk tickers in the full BROADER + extra lists (which cause the yf "no data"/404 errors and result in empty hot lists).
-                # Full universe (with all the extra names) is still used for "Scan More / Discover" and "Full Exhaustive Scan".
-                # Core = NIFTY50 + SP500 core + a few good extras. Prioritize India.
-                core_us = list(dict.fromkeys(
-                    ["AAPL","MSFT","NVDA","AMZN","META","GOOGL","GOOG","AVGO","AMD","TSLA","JPM","V","MA","UNH","JNJ","PG","HD","CVX","MRK","ABBV","LLY","BAC","WMT","XOM","CRM","ORCL","ACN","MCD","CAT","IBM","GE","RTX","LMT","NOC","GD","DE","ETN","NOW","SNOW","ZS","NET","ANET","TSM","ASML","SOXX"] + 
-                    self.state.universe.get("us", [])[:50]
-                ))[:80]
-                core_india = list(dict.fromkeys(
-                    ["RELIANCE.NS","TCS.NS","HDFCBANK.NS","INFY.NS","ICICIBANK.NS","HINDUNILVR.NS","ITC.NS","SBIN.NS","BHARTIARTL.NS","KOTAKBANK.NS","LT.NS","AXISBANK.NS","ASIANPAINT.NS","MARUTI.NS","TITAN.NS","BAJFINANCE.NS","HCLTECH.NS","WIPRO.NS","ULTRACEMCO.NS","SUNPHARMA.NS","NTPC.NS","POWERGRID.NS","ONGC.NS","NESTLEIND.NS","TATAMOTORS.NS","M&M.NS","ADANIENT.NS","ADANIPORTS.NS","JSWSTEEL.NS","TATASTEEL.NS","TECHM.NS","INDUSINDBK.NS","BAJAJFINSV.NS","HINDALCO.NS","COALINDIA.NS","GRASIM.NS","DIVISLAB.NS","CIPLA.NS","DRREDDY.NS","APOLLOHOSP.NS","EICHERMOT.NS","BPCL.NS","HEROMOTOCO.NS","BRITANNIA.NS","TRENT.NS","SHRIRAMFIN.NS","SBILIFE.NS","HDFCLIFE.NS","BEL.NS"] +
-                    self.state.universe.get("india", [])[:50]
-                ))[:80]
+                # For LIVE hot movers (the recommendations in the UI tabs), use a *very small* core of the most liquid/reliable tickers only (~25 per market).
+                # The full polluted lists (with delisted/junk) cause yf rate limits + "no data" errors → 0 symbols scored → empty hot lists.
+                # Full lists reserved for Discover/Full Exhaustive (which inject into hot).
+                # This small core lets the live scanner succeed quickly and populate both US and India hot tabs with real stocks.
+                # Prioritize India.
+                core_us = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "V", "MA", "UNH", "JNJ", "PG", "HD", "CVX", "MRK", "ABBV", "BAC", "WMT", "XOM", "CRM", "COST", "AVGO", "AMD", "NFLX"][:25]
+                core_india = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "TITAN.NS", "BAJFINANCE.NS", "HCLTECH.NS", "WIPRO.NS", "SUNPHARMA.NS", "NTPC.NS", "POWERGRID.NS", "ONGC.NS", "NESTLEIND.NS", "TATAMOTORS.NS", "M&M.NS", "ADANIENT.NS", "JSWSTEEL.NS", "TATASTEEL.NS", "TECHM.NS", "HINDALCO.NS"][:25]
                 pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india]
                 async with self.state.lock:
                     events_by_symbol = {
