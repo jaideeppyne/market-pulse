@@ -85,3 +85,61 @@ def test_state_news_earnings_buzz_parses_date():
     assert item["days_until"] is not None
     assert item["earnings_date"].endswith("-07-15")
     assert int(item["earnings_date"][:4]) >= datetime.now(timezone.utc).year
+
+
+
+def test_analyze_resolver_prefers_plain_us_ticker_when_symbol_exists_in_us_universe():
+    from app import main
+
+    main.state.universe = {
+        "us": ["AAPL", "MRVL"],
+        "india": ["RELIANCE.NS", "TCS.NS"],
+        "uk": ["BP.L"],
+    }
+
+    resolved = main.resolve_analyze_symbol("MRVL")
+
+    assert resolved.normalized == "MRVL"
+    assert resolved.market == "us"
+    assert resolved.candidates == ["MRVL"]
+
+
+def test_analyze_resolver_still_maps_known_india_alias_to_ns_suffix():
+    from app import main
+
+    main.state.universe = {
+        "us": ["AAPL", "MRVL"],
+        "india": ["RELIANCE.NS", "TCS.NS"],
+        "uk": ["BP.L"],
+    }
+
+    resolved = main.resolve_analyze_symbol("reliance")
+
+    assert resolved.normalized == "RELIANCE.NS"
+    assert resolved.market == "india"
+    assert resolved.candidates == ["RELIANCE.NS"]
+
+
+def test_live_price_scan_pairs_come_from_configured_universe_not_hardcoded_core():
+    from app.state import AppState
+    from app.workers.scanner_loop import ScannerLoop
+
+    state = AppState()
+    state.universe = {
+        "us": ["AAPL", "MRVL", "ZZZ"],
+        "india": ["RELIANCE.NS"],
+        "uk": ["BP.L"],
+    }
+    scanner = ScannerLoop(
+        {
+            "scanner": {"live_symbols_per_market": 10},
+        },
+        state,
+    )
+
+    pairs = scanner._build_live_scan_pairs({})
+
+    assert ("MRVL", "us") in pairs
+    assert ("ZZZ", "us") in pairs
+    assert ("RELIANCE.NS", "india") in pairs
+    assert ("BP.L", "uk") in pairs

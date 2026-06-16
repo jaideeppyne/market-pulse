@@ -33,6 +33,7 @@ class ScannerLoop:
         self._news_titles: dict[str, list[str]] = {}
         self._symbol_failures: dict[str, int] = {}
         self._symbol_quarantine_until: dict[str, float] = {}
+        self._scan_offsets: dict[str, int] = {}
 
     def _eligible_pairs(self, pairs: list[tuple[str, str]]) -> tuple[list[tuple[str, str]], int]:
         """Skip symbols that repeatedly produced no usable market data.
@@ -89,6 +90,61 @@ class ScannerLoop:
             pairs.append((sym, "uk"))
         return pairs
 
+    def _dedupe_symbols(self, symbols: list[str]) -> list[str]:
+        seen: set[str] = set()
+        out: list[str] = []
+        for sym in symbols:
+            key = str(sym or "").upper()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+        return out
+
+    def _rotating_market_window(self, market: str, symbols: list[str], limit: int | None) -> list[str]:
+        symbols = self._dedupe_symbols(symbols)
+        if not limit or limit <= 0 or len(symbols) <= limit:
+            return symbols
+        start = self._scan_offsets.get(market, 0) % len(symbols)
+        window = [symbols[(start + i) % len(symbols)] for i in range(limit)]
+        self._scan_offsets[market] = (start + limit) % len(symbols)
+        return window
+
+    def _build_live_scan_pairs(self, events_by_symbol: dict[str, list[dict]]) -> list[tuple[str, str]]:
+        """Build the live hot-mover scan from the configured universe, not fixed tickers.
+
+        A configurable rotating window keeps each pass bounded for yfinance while
+        eventually covering the whole configured US/India/UK universe. Event-led
+        symbols are always included on top of the regular universe window.
+        """
+        scfg = self.cfg.get("scanner", {})
+        try:
+            live_limit = int(scfg.get("live_symbols_per_market", 0))
+        except (TypeError, ValueError):
+            live_limit = 0
+
+        pairs: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        universe = self.state.universe or {}
+        for market in ("india", "us", "uk"):
+            symbols = self._rotating_market_window(market, list(universe.get(market, [])), live_limit)
+            for sym in symbols:
+                if sym in seen:
+                    continue
+                pairs.append((sym, market))
+                seen.add(sym)
+
+        for sym, events in events_by_symbol.items():
+            key = str(sym or "").upper()
+            if not key or key in seen:
+                continue
+            event_market = (events[0] or {}).get("market") if events else None
+            market = event_market or ("india" if key.endswith((".NS", ".BO")) else "uk" if key.endswith(".L") else "us")
+            pairs.append((key, market))
+            seen.add(key)
+
+        return pairs
+
     async def news_loop(self) -> None:
         interval = self.cfg["scanner"]["news_scan_interval_sec"]
         feeds = self.cfg.get("news", {}).get("feeds", [])
@@ -125,28 +181,12 @@ class ScannerLoop:
 
         while self._running:
             try:
-                # For LIVE hot movers (the recommendations in the UI tabs), use a *very small* core of the most liquid/reliable tickers only (~25 per market).
-                # The full polluted lists (with delisted/junk) cause yf rate limits + "no data" errors → 0 symbols scored → empty hot lists.
-                # Full lists reserved for Discover/Full Exhaustive (which inject into hot).
-                # This small core lets the live scanner succeed quickly and populate both US and India hot tabs with real stocks.
-                # Prioritize India.
-                core_us = ["AAPL", "MSFT", "NVDA", "AMZN", "META", "GOOGL", "TSLA", "JPM", "V", "MA", "UNH", "JNJ", "PG", "HD", "CVX", "MRK", "ABBV", "BAC", "WMT", "XOM", "CRM", "COST", "AVGO", "AMD", "MU", "NFLX"][:26]
-                core_india = ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", "HINDUNILVR.NS", "ITC.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS", "TITAN.NS", "BAJFINANCE.NS", "HCLTECH.NS", "WIPRO.NS", "SUNPHARMA.NS", "NTPC.NS", "POWERGRID.NS", "ONGC.NS", "NESTLEIND.NS", "TATAMOTORS.NS", "M&M.NS", "ADANIENT.NS", "JSWSTEEL.NS", "TATASTEEL.NS", "TECHM.NS", "HINDALCO.NS"][:25]
-                core_uk = ["SHEL.L", "AZN.L", "HSBA.L", "ULVR.L", "BP.L", "RIO.L", "GSK.L", "DGE.L", "BATS.L", "GLEN.L", "BARC.L", "LLOY.L", "NWG.L", "VOD.L", "BT-A.L", "TSCO.L", "BA.L", "RR.L", "LSEG.L", "REL.L", "NG.L", "AAL.L", "PRU.L", "LGEN.L", "AV.L"][:25]
-                pairs = [(sym, "us") for sym in core_us] + [(sym, "india") for sym in core_india] + [(sym, "uk") for sym in core_uk]
                 async with self.state.lock:
                     events_by_symbol = {
                         sym: list(events)
                         for sym, events in self.state.events_by_symbol.items()
                     }
-                seen_pairs = {sym for sym, _ in pairs}
-                for sym, events in events_by_symbol.items():
-                    if sym in seen_pairs:
-                        continue
-                    event_market = (events[0] or {}).get("market") if events else None
-                    market = event_market or ("india" if sym.endswith((".NS", ".BO")) else "uk" if sym.endswith(".L") else "us")
-                    pairs.append((sym, market))
-                    seen_pairs.add(sym)
+                pairs = self._build_live_scan_pairs(events_by_symbol)
                 pairs, skipped_quarantined = self._eligible_pairs(pairs)
                 if skipped_quarantined:
                     async with self.state.lock:

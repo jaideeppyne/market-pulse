@@ -6,6 +6,7 @@ import logging
 import os
 import re
 from contextlib import asynccontextmanager
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -62,6 +63,79 @@ FRONTEND = ROOT / "frontend"
 state = AppState()
 scanner: ScannerLoop | None = None
 ws_clients: set[WebSocket] = set()
+
+
+@dataclass(frozen=True)
+class ResolvedAnalyzeSymbol:
+    raw: str
+    normalized: str
+    market: str
+    candidates: list[str]
+
+
+NAME_TO_TICKER = {
+    "MICRON": "MU",
+    "MICRON TECHNOLOGY": "MU",
+    "MICRON TECH": "MU",
+    "NVIDIA": "NVDA",
+    "NVDA": "NVDA",
+    "GOOGLE": "GOOGL",
+    "GOOG": "GOOGL",
+    "AMAZON": "AMZN",
+    "META": "META",
+    "FACEBOOK": "META",
+    "RELIANCE": "RELIANCE.NS",
+    "RELIANCE INDUSTRIES": "RELIANCE.NS",
+    "TCS": "TCS.NS",
+    "TATA CONSULTANCY": "TCS.NS",
+    "INFOSYS": "INFY.NS",
+    "HDFC BANK": "HDFCBANK.NS",
+    "HDFCBANK": "HDFCBANK.NS",
+    "ICICI BANK": "ICICIBANK.NS",
+    "SBIN": "SBIN.NS",
+    "SBI": "SBIN.NS",
+    "TATA MOTORS": "TATAMOTORS.NS",
+    "ADANI": "ADANIENT.NS",
+    "APPLE": "AAPL",
+}
+
+
+def _base_symbol(sym: str) -> str:
+    s = str(sym or "").upper()
+    for suffix in (".NS", ".BO", ".L"):
+        if s.endswith(suffix):
+            return s[: -len(suffix)]
+    return s
+
+
+def resolve_analyze_symbol(symbol: str) -> ResolvedAnalyzeSymbol:
+    """Resolve search/analyze input without turning plain US tickers into .NS tickers."""
+    from urllib.parse import unquote
+
+    raw = unquote(symbol).strip()
+    upper = raw.upper()
+    resolved = NAME_TO_TICKER.get(upper, upper)
+    if resolved == upper:
+        for alias, tkr in NAME_TO_TICKER.items():
+            if alias in upper or upper in alias:
+                resolved = tkr
+                break
+    upper = resolved
+
+    if upper.endswith((".NS", ".BO")):
+        return ResolvedAnalyzeSymbol(raw=raw, normalized=upper, market="india", candidates=[upper])
+    if upper.endswith(".L"):
+        return ResolvedAnalyzeSymbol(raw=raw, normalized=upper, market="uk", candidates=[upper])
+
+    universe = getattr(state, "universe", {}) or {}
+    us_symbols = {str(sym).upper() for sym in universe.get("us", [])}
+    india_bases = {_base_symbol(str(sym)) for sym in universe.get("india", [])}
+
+    if upper not in us_symbols and upper in india_bases:
+        normalized = f"{upper}.NS"
+        return ResolvedAnalyzeSymbol(raw=raw, normalized=normalized, market="india", candidates=[normalized])
+
+    return ResolvedAnalyzeSymbol(raw=raw, normalized=upper, market="us", candidates=[upper])
 
 
 async def _push_ws_update() -> None:
@@ -333,52 +407,12 @@ async def api_symbol(symbol: str, refresh: bool = False):
     that is used for every stock in the hot list).
     This powers the "analyze any stock" search box.
     """
-    from urllib.parse import unquote
     from datetime import datetime, timezone
 
-    raw = unquote(symbol).strip()
-    upper = raw.upper()
-
-    # Company / common name → ticker resolver so users can type "micron", "nvidia", "reliance" etc.
-    # Reuses spirit of the news alias system but for direct search/analyze input.
-    NAME_TO_TICKER = {
-        "MICRON": "MU",
-        "MICRON TECHNOLOGY": "MU",
-        "MICRON TECH": "MU",
-        "NVIDIA": "NVDA",
-        "NVDA": "NVDA",
-        "GOOGLE": "GOOGL",
-        "GOOG": "GOOGL",
-        "AMAZON": "AMZN",
-        "META": "META",
-        "FACEBOOK": "META",
-        "RELIANCE": "RELIANCE.NS",
-        "RELIANCE INDUSTRIES": "RELIANCE.NS",
-        "TCS": "TCS.NS",
-        "TATA CONSULTANCY": "TCS.NS",
-        "INFOSYS": "INFY.NS",
-        "HDFC BANK": "HDFCBANK.NS",
-        "HDFCBANK": "HDFCBANK.NS",
-        "ICICI BANK": "ICICIBANK.NS",
-        "SBIN": "SBIN.NS",
-        "SBI": "SBIN.NS",
-        "TATA MOTORS": "TATAMOTORS.NS",
-        "ADANI": "ADANIENT.NS",
-        "APPLE": "AAPL",
-    }
-    resolved = NAME_TO_TICKER.get(upper, upper)
-    if resolved == upper:
-        # fuzzy contains match for longer company names users actually type
-        for alias, tkr in NAME_TO_TICKER.items():
-            if alias in upper or upper in alias:
-                resolved = tkr
-                break
-    if resolved != upper:
-        upper = resolved
-
-    candidates = [upper]
-    if not upper.endswith(".NS") and not upper.endswith(".BO"):
-        candidates.append(upper + ".NS")
+    resolved_symbol = resolve_analyze_symbol(symbol)
+    raw = resolved_symbol.raw
+    upper = resolved_symbol.normalized
+    candidates = resolved_symbol.candidates
 
     if not refresh:
         async with state.lock:
@@ -388,15 +422,8 @@ async def api_symbol(symbol: str, refresh: bool = False):
                     return data
 
     # On-demand full analysis for any ticker (US, India, or UK)
-    if any(c.endswith((".NS", ".BO")) for c in candidates):
-        market = "india"
-    elif upper.endswith(".L"):
-        market = "uk"
-    else:
-        market = "us"
-    norm_sym = upper
-    if market == "india" and not norm_sym.endswith(".NS"):
-        norm_sym = norm_sym + ".NS"
+    market = resolved_symbol.market
+    norm_sym = resolved_symbol.normalized
 
     # Reuse the exact same batch fetcher the live scanner uses
     try:

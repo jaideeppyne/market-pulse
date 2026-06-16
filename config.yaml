@@ -30,6 +30,8 @@ scanner:
   news_scan_interval_sec: 90
   # Rank hot list by buy_score (entry-first). quality_score kept for reference.
   ranking_mode: buy_score
+  # Symbols per market per live scan pass. Uses the configured universe (not fixed tickers); 0 means all.
+  live_symbols_per_market: 0
   # Symbols per batch for yfinance (avoid rate limits). For more aggressive live coverage raise batch carefully + add delay.
   batch_size: 40
   batch_delay_sec: 0.35
