@@ -272,6 +272,7 @@ class AppState:
 
     async def update_earnings(self, items: list[dict[str, Any]]) -> None:
         async with self.lock:
+            result_count = len(items or [])
             enriched = []
             for e in items:
                 row = dict(e)
@@ -294,8 +295,13 @@ class AppState:
             enriched.sort(key=lambda x: (x.get("days_until", 99) or 99, -(x.get("score") or 0)))
             self.earnings = enriched[:120]
             self.earnings_by_symbol = {e["symbol"]: e for e in self.earnings}
+            now = datetime.now(timezone.utc).isoformat()
             self.stats["earnings_upcoming"] = len(self.earnings)
-            self.stats["last_earnings_scan"] = datetime.now(timezone.utc).isoformat()
+            self.stats["last_earnings_scan"] = now
+            self.stats["last_earnings_scan_result_count"] = result_count
+            self.stats["last_earnings_scan_empty"] = result_count == 0
+            if result_count == 0:
+                self.stats["last_empty_earnings_scan"] = now
         self.broadcast_event.set()
 
     def _generate_earnings_buzz(self) -> list[dict[str, Any]]:

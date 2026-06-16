@@ -85,6 +85,18 @@ class AppStateScanTests(unittest.TestCase):
         self.assertIn("last_event_scan", state.stats)
         self.assertTrue(state.broadcast_event.is_set())
 
+    def test_update_earnings_tracks_empty_scan_observability(self):
+        state = make_state()
+
+        run_state_update(state, state.update_earnings([]))
+
+        self.assertEqual(state.stats["earnings_upcoming"], 0)
+        self.assertEqual(state.stats["last_earnings_scan_result_count"], 0)
+        self.assertIs(state.stats["last_earnings_scan_empty"], True)
+        self.assertIn("last_empty_earnings_scan", state.stats)
+        self.assertIn("last_earnings_scan", state.stats)
+        self.assertTrue(state.broadcast_event.is_set())
+
     def test_hot_lists_rank_and_filter_by_buy_score(self):
         state = make_state()
         rows = [
