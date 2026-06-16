@@ -400,7 +400,10 @@ class ScannerLoop:
                     chunk = syms[i : i + batch]
                     patches.extend(await quick_refresh_symbols(chunk))
                     await asyncio.sleep(0.2)
-                n = await self.state.apply_price_patches(patches)
+                n = await self.state.apply_price_patches(
+                    patches,
+                    attempted_count=len(syms),
+                )
                 if n:
                     logger.info("Quick price refresh: %d hot symbols updated", n)
             except Exception:

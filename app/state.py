@@ -158,13 +158,19 @@ class AppState:
                     self.stats["last_empty_price_scan"] = now
         self.broadcast_event.set()
 
-    async def apply_price_patches(self, patches: list[dict[str, Any]]) -> int:
+    async def apply_price_patches(
+        self,
+        patches: list[dict[str, Any]],
+        *,
+        attempted_count: int | None = None,
+    ) -> int:
         """Update live prices on hot symbols without full factor re-scan."""
-        if not patches:
+        patch_count = len(patches or [])
+        if not patch_count and attempted_count is None:
             return 0
         updated = 0
         async with self.lock:
-            for p in patches:
+            for p in patches or []:
                 sym = p.get("symbol")
                 if not sym or sym not in self.symbols:
                     continue
@@ -182,19 +188,29 @@ class AppState:
             if updated:
                 self._rebuild_hot_lists()
                 self.scan_generation += 1
-                now = datetime.now(timezone.utc).isoformat()
-                self.live_tick += 1
-                self.stats.update(
+            now = datetime.now(timezone.utc).isoformat()
+            self.live_tick += 1
+            stats_update = {
+                "last_quick_price": now,
+                "last_quick_price_patch_count": patch_count,
+                "last_quick_price_updated_count": updated,
+                "last_quick_price_empty": updated == 0,
+                "live_tick": self.live_tick,
+            }
+            if attempted_count is not None:
+                stats_update["last_quick_price_attempted"] = attempted_count
+            if updated:
+                stats_update.update(
                     {
                         "last_price_tick": now,
                         "scan_generation": self.scan_generation,
-                        "live_tick": self.live_tick,
                         "hot_shown": len(self.hot),
-                        "last_quick_price": now,
                     }
                 )
-        if updated:
-            self.broadcast_event.set()
+            else:
+                stats_update["last_empty_quick_price"] = now
+            self.stats.update(stats_update)
+        self.broadcast_event.set()
         return updated
 
     async def update_news(

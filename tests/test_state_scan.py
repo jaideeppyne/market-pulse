@@ -43,6 +43,56 @@ class AppStateScanTests(unittest.TestCase):
         self.assertIn("last_price_scan", state.stats)
         self.assertTrue(state.broadcast_event.is_set())
 
+    def test_apply_price_patches_tracks_empty_quick_refresh_observability(self):
+        state = make_state()
+
+        updated = run_state_update(
+            state,
+            state.apply_price_patches([], attempted_count=4),
+        )
+
+        self.assertEqual(updated, 0)
+        self.assertEqual(state.stats["last_quick_price_attempted"], 4)
+        self.assertEqual(state.stats["last_quick_price_patch_count"], 0)
+        self.assertEqual(state.stats["last_quick_price_updated_count"], 0)
+        self.assertIs(state.stats["last_quick_price_empty"], True)
+        self.assertIn("last_empty_quick_price", state.stats)
+        self.assertIn("last_quick_price", state.stats)
+        self.assertTrue(state.broadcast_event.is_set())
+
+    def test_apply_price_patches_tracks_received_and_applied_counts(self):
+        state = make_state()
+        run_state_update(
+            state,
+            state.update_scan(
+                [{"symbol": "AAPL", "market": "us", "score": 80, "metrics": {"buy_score": 80}}],
+                threshold=55,
+                partial=False,
+                attempted_count=1,
+            ),
+        )
+        state.broadcast_event.clear()
+
+        updated = run_state_update(
+            state,
+            state.apply_price_patches(
+                [
+                    {"symbol": "AAPL", "price": 210.5, "day_chg_pct": 1.2},
+                    {"symbol": "MSFT", "price": 420.0},
+                ],
+                attempted_count=3,
+            ),
+        )
+
+        self.assertEqual(updated, 1)
+        self.assertEqual(state.symbols["AAPL"]["metrics"]["price"], 210.5)
+        self.assertEqual(state.stats["last_quick_price_attempted"], 3)
+        self.assertEqual(state.stats["last_quick_price_patch_count"], 2)
+        self.assertEqual(state.stats["last_quick_price_updated_count"], 1)
+        self.assertIs(state.stats["last_quick_price_empty"], False)
+        self.assertIn("last_quick_price", state.stats)
+        self.assertTrue(state.broadcast_event.is_set())
+
     def test_update_news_tracks_result_and_symbol_observability(self):
         state = make_state()
         items = [
