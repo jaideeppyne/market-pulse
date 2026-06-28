@@ -1,19 +1,28 @@
 import { useState } from 'react'
-import { useDispatch } from 'react-redux'
 import { selectSymbol } from '../store/uiSlice'
+import { useAppDispatch } from '../store/hooks'
 import {
   usePortfolioQuery, useJournalQuery, useAddPositionMutation,
   useClosePositionMutation, useLazyAnalyzeQuery,
 } from '../store/api'
 
+interface PositionForm {
+  symbol: string
+  qty: number | string
+  entry: string
+  sl: string
+  target: string
+  notes: string
+}
+
 export default function Portfolio() {
-  const dispatch = useDispatch()
+  const dispatch = useAppDispatch()
   const { data: pf } = usePortfolioQuery()
   const { data: jr } = useJournalQuery()
   const [addPosition] = useAddPositionMutation()
   const [closePosition] = useClosePositionMutation()
   const [triggerAnalyze] = useLazyAnalyzeQuery()
-  const [form, setForm] = useState({ symbol: '', qty: 100, entry: '', sl: '', target: '', notes: '' })
+  const [form, setForm] = useState<PositionForm>({ symbol: '', qty: 100, entry: '', sl: '', target: '', notes: '' })
   const [busy, setBusy] = useState(false)
 
   const positions = pf?.positions || []
@@ -44,7 +53,8 @@ export default function Portfolio() {
       }).unwrap()
       setForm({ symbol: '', qty: 100, entry: '', sl: '', target: '', notes: '' })
     } catch (e) {
-      alert('Paper buy failed: ' + (e?.data?.detail || e?.error || 'error'))
+      const err = e as { data?: { detail?: string }; error?: string }
+      alert('Paper buy failed: ' + (err?.data?.detail || err?.error || 'error'))
     } finally {
       setBusy(false)
     }
@@ -68,14 +78,14 @@ export default function Portfolio() {
           <tbody>
             {positions.length === 0 && <tr><td colSpan={7} className="muted">No open positions. Log a paper buy below or 📁 from the Hot Movers table.</td></tr>}
             {positions.map((p) => (
-              <tr key={p.symbol} onClick={() => dispatch(selectSymbol(p.symbol))}>
-                <td className="symbol-cell">{p.symbol}</td>
+              <tr key={p.symbol} title={`Open ${p.symbol}${p.name && p.name !== p.symbol ? ' (' + p.name + ')' : ''}`} onClick={() => dispatch(selectSymbol(p.symbol))}>
+                <td className="symbol-cell">{p.symbol}{p.name && p.name !== p.symbol ? (<><br /><span className="sym__name">{p.name}</span></>) : null}</td>
                 <td>{p.entry_price}</td>
                 <td>{p.qty}</td>
                 <td className={(p.est_pnl ?? 0) >= 0 ? 'pos' : 'neg'}>{p.est_pnl ?? '—'}</td>
                 <td className="muted">{p.sl ?? '—'} / {p.target ?? '—'}</td>
                 <td className="muted">{p.notes || ''}</td>
-                <td><button className="btn-danger tiny" onClick={(e) => { e.stopPropagation(); closePosition({ symbol: p.symbol }) }}>Close</button></td>
+                <td><button className="btn-danger tiny" title={`Close the paper position in ${p.symbol} (records realized P&L)`} onClick={(e) => { e.stopPropagation(); closePosition({ symbol: p.symbol }) }}>Close</button></td>
               </tr>
             ))}
           </tbody>
@@ -85,13 +95,13 @@ export default function Portfolio() {
       <div className="portfolio-form panel">
         <h3 className="view-h3">Log new paper buy</h3>
         <div className="port-form-row">
-          <input type="text" placeholder="SYMBOL" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} />
-          <input type="number" placeholder="Qty" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
-          <input type="number" placeholder="Entry $ (auto)" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} />
-          <input type="number" placeholder="SL $" value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} />
-          <input type="number" placeholder="Target $" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
-          <input type="text" placeholder="Notes / thesis" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <button className="btn-primary" onClick={submit} disabled={busy}>{busy ? 'Logging…' : '📁 Log Paper Buy'}</button>
+          <input type="text" placeholder="SYMBOL" title="Ticker symbol to log a paper buy for" value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value })} />
+          <input type="number" placeholder="Qty" title="Number of shares" value={form.qty} onChange={(e) => setForm({ ...form, qty: e.target.value })} />
+          <input type="number" placeholder="Entry $ (auto)" title="Entry price — leave blank to auto-fill the live price" value={form.entry} onChange={(e) => setForm({ ...form, entry: e.target.value })} />
+          <input type="number" placeholder="SL $" title="Stop-loss price (optional)" value={form.sl} onChange={(e) => setForm({ ...form, sl: e.target.value })} />
+          <input type="number" placeholder="Target $" title="Target / take-profit price (optional)" value={form.target} onChange={(e) => setForm({ ...form, target: e.target.value })} />
+          <input type="text" placeholder="Notes / thesis" title="Your entry thesis / notes (optional)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
+          <button className="btn-primary" title="Log this paper buy to the journal" onClick={submit} disabled={busy}>{busy ? 'Logging…' : '📁 Log Paper Buy'}</button>
         </div>
         <p className="muted small-note">Entry price pulled from live state / analyze if omitted. One position per symbol.</p>
       </div>

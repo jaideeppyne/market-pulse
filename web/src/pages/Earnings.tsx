@@ -1,9 +1,9 @@
-import { useSelector, useDispatch } from 'react-redux'
 import { selectSymbol } from '../store/uiSlice'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
 
 export default function Earnings() {
-  const dispatch = useDispatch()
-  const rows = useSelector((s) => s.live.data?.earnings) || []
+  const dispatch = useAppDispatch()
+  const rows = useAppSelector((s) => s.live.data?.earnings) || []
 
   return (
     <section className="panel pad">
@@ -18,7 +18,7 @@ export default function Earnings() {
               const di = e.days_until
               const inTxt = di === 0 ? 'TODAY' : di != null ? `${di}d` : '—'
               return (
-                <tr key={(e.symbol || '') + i} onClick={() => dispatch(selectSymbol(e.symbol))}>
+                <tr key={(e.symbol || '') + i} title={`Open ${e.symbol || ''}`} onClick={() => e.symbol && dispatch(selectSymbol(e.symbol))}>
                   <td className="symbol-cell">{e.symbol}</td>
                   <td className="muted">{e.date || e.report_date || '—'}</td>
                   <td>{inTxt}</td>

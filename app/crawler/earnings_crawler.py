@@ -136,15 +136,27 @@ async def crawl_earnings_calendar(
 def _parse_earnings_from_rss(feed_url: str, market: str = "global") -> list[dict[str, Any]]:
     """Scrape earnings info from RSS feeds (Moneycontrol, ET, etc.) for next level multi-site coverage."""
     results = []
+    _STOP = {"RESULTS","RESULT","BOARD","MEETING","EARNINGS","REVENUE","PROFIT","LOSS",
+             "QUARTER","ANNUAL","REPORT","STOCK","STOCKS","SHARE","SHARES","MARKET","NEWS",
+             "INDIA","LIMITED","LTD","INC","CORP","THE","AND","FOR","WITH","FROM","NSE","BSE",
+             "JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"}
     try:
-        feed = feedparser.parse(feed_url)
+        import urllib.request as _u
+        _req = _u.Request(feed_url, headers={
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 "
+                          "(KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+            "Accept": "application/rss+xml,application/xml,text/xml;q=0.9,*/*;q=0.8",
+        })
+        with _u.urlopen(_req, timeout=12) as _r:  # noqa: S310
+            _body = _r.read()
+        feed = feedparser.parse(_body)
         for entry in feed.entries[:30]:
             title = entry.get("title", "")
             summary = entry.get("summary", "") or entry.get("description", "")
             text = f"{title} {summary}"
             # Extract possible dates and symbols
             date_match = re.search(r'(\d{1,2})\s*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|July|June)?', text, re.I)
-            symbols = re.findall(r'\b([A-Z]{2,10}(?:\.NS)?)\b', text.upper())
+            symbols = [x for x in re.findall(r'\b([A-Z]{2,12}(?:\.NS)?)\b', text.upper()) if x.replace(".NS","") not in _STOP and len(x.replace(".NS","")) >= 3]
             if date_match and symbols:
                 try:
                     day = int(date_match.group(1))
@@ -183,10 +195,13 @@ async def crawl_earnings_from_multiple_sites(symbol_markets: list[tuple[str, str
         ("https://www.business-standard.com/rss/corporate-6.rss", "india"),
         ("https://feeds.finance.yahoo.com/rss/2.0/headline?s=^NSEI&region=IN&lang=en-US", "india"),
     ]
-    for feed_url, mkt in feeds:
-        rss_results = await asyncio.to_thread(_parse_earnings_from_rss, feed_url, mkt)
-        all_results.extend(rss_results)
-        await asyncio.sleep(0.1)
+    rss_lists = await asyncio.gather(
+        *[asyncio.to_thread(_parse_earnings_from_rss, fu, mk) for fu, mk in feeds],
+        return_exceptions=True,
+    )
+    for rr in rss_lists:
+        if isinstance(rr, list):
+            all_results.extend(rr)
 
     # Dedup and filter to horizon
     today = datetime.now(timezone.utc).date()

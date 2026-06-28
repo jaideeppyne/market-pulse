@@ -1,7 +1,18 @@
-import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import { getHotPool, rankScore, hasSmartMoney } from '../lib/format'
 import { toggleWhale, resetFilters } from '../store/uiSlice'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+
+const TIPS: Record<string, string> = {
+  hot: 'Total hot movers in view — click to clear filters',
+  high: 'Stocks with buy score 70+ — click to reset to all high-conviction',
+  sm: 'Named smart-money / whale signals — click to toggle the Whale filter',
+  news: 'Headlines tracked — click to open Live News',
+  earn: 'Stocks reporting soon — click to open Earnings',
+  events: 'Filings + catalysts — click to open S+ Radar',
+  tracked: 'Symbols processed by the scanner — click to reset filters',
+  health: 'Live scan coverage — click to open Edge & Guide',
+}
 
 const CARDS = [
   { key: 'hot', label: 'Hot', accent: '#2563EB', iconBg: 'rgba(37,99,235,.10)', icon: 'M3 17l6-6 4 4 8-8M21 7v6', subColor: '#15803D' },
@@ -15,10 +26,10 @@ const CARDS = [
 ]
 
 export default function StatCards() {
-  const dispatch = useDispatch()
+  const dispatch = useAppDispatch()
   const navigate = useNavigate()
-  const data = useSelector((s) => s.live.data)
-  const marketFilter = useSelector((s) => s.ui.marketFilter)
+  const data = useAppSelector((s) => s.live.data)
+  const marketFilter = useAppSelector((s) => s.ui.marketFilter)
   const stats = data?.stats || {}
 
   const pool = getHotPool(data || {}, marketFilter)
@@ -43,7 +54,7 @@ export default function StatCards() {
     health: [health, stats.scan_in_progress ? `scanning ${stats.scan_batch || '?'}/${stats.scan_batches_total || '?'}` : 'live coverage'],
   }
 
-  const onClick = (key) => {
+  const onClick = (key: string) => {
     if (key === 'sm') dispatch(toggleWhale())
     else if (key === 'high') dispatch(resetFilters())
     else if (key === 'news') navigate('/news')
@@ -58,7 +69,7 @@ export default function StatCards() {
       {CARDS.map((c) => {
         const [value, sub] = values[c.key]
         return (
-          <button key={c.key} type="button" className="stat-card clickable" onClick={() => onClick(c.key)} title="Click to filter / open">
+          <button key={c.key} type="button" className="stat-card clickable" onClick={() => onClick(c.key)} title={TIPS[c.key] || 'Click to filter / open'}>
             <span className="accent" style={{ background: c.accent }} />
             <div className="stat-head">
               <span className="label">{c.label}</span>

@@ -21,7 +21,7 @@ def _fetch_quick(symbols: list[str]) -> dict[str, dict[str, Any]]:
             interval="1d",
             group_by="ticker",
             auto_adjust=True,
-            threads=True,
+            threads=False,
             progress=False,
         )
     except Exception as e:

@@ -82,6 +82,41 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
         if cov > 3:
             add("interest_coverage", "fundamental", f"Interest cover {cov:.1f}x", 1.5)
 
+    # === MORE SPECIFIC FUNDAMENTAL RULES FOR NSE/BSE (India focus) with fulfillment potential ===
+    # Promoter holding (strong alignment for Indian companies)
+    ph = i.get("heldPercentInsiders") or i.get("promoter_holding_pct")
+    if ctx.market == "india" and ph:
+        if ph >= 0.50:
+            add("promoter_very_high", "fundamental", f"Very strong promoter holding {ph*100:.0f}%", 3.5)
+        elif ph >= 0.40:
+            add("promoter_high", "fundamental", f"Good promoter holding {ph*100:.0f}% (skin in game)", 2.5)
+    # Strong FII / Institutional backing (common in quality Indian stocks)
+    inst = i.get("heldPercentInstitutions") or i.get("fii_holding_pct")
+    if ctx.market == "india" and inst and inst >= 0.15:
+        add("fii_strong_backing", "ownership", f"Strong FII/institutional backing {inst*100:.0f}%", 2.5)
+    # Revenue + profit scale + growth combo (market leader signals)
+    rev = i.get("totalRevenue")
+    if rev and rev > 100_000_000_000 and ctx.market == "india":  # large revenue leader proxy
+        add("large_scale_india", "fundamental", "Large revenue scale (potential market leader)", 1.5)
+    if rev_g > 0.15 and earn_g > 0.12 and ctx.market == "india":
+        add("high_quality_growth_india", "fundamental", "High quality dual growth (sales + earnings)", 3.0)
+    # Cheaper valuations with profitability
+    if pe and pe < 15 and i.get("profitMargins") and i["profitMargins"] > 0.08:
+        add("cheap_profitable", "valuation", f"Cheap valuation (PE {pe:.1f}) with solid margins", 2.5)
+    # High FCF yield + positive profits
+    if fcf and mcap and mcap > 0 and (fcf / mcap) >= 0.05 and i.get("profitMargins") and i["profitMargins"] > 0:
+        add("strong_fcf_profitability", "fundamental", "Excellent FCF yield with positive profits", 3.0)
+    # Sustainable high dividend (yield + coverage)
+    dy = i.get("dividendYield")
+    payout = i.get("payoutRatio")
+    if dy and dy >= 0.025 and (payout is None or payout < 0.65):
+        add("high_sustainable_div", "income", f"High sustainable dividend yield {dy*100:.1f}%", 2.5)
+    # Strong balance sheet + ROE
+    de = i.get("debtToEquity")
+    roe = i.get("returnOnEquity")
+    if (de is None or de < 50) and roe and roe > 0.18:
+        add("clean_balance_strong_roe", "fundamental", "Low debt + high ROE (quality compounder)", 2.5)
+
     # --- VALUATION (PE/PB sector-aware) ---
     pe = i.get("trailingPE")
     pb = i.get("priceToBook")

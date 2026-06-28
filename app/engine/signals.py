@@ -77,35 +77,176 @@ def analyze_symbol(
     res.factor_details = metrics.get("factor_details", [])
     res.factor_breakdown = metrics.get("factor_breakdown", [])
 
-    # === RICH REASONS for UI: multiple technical + fundamental + catalyst (solid why it's good) ===
-    # Collect from positive factor hits + alerts + news signals. This is what gets published to frontend.
+    # === RICH REASONS + EXPLICIT CRITERIA FULFILLMENT TRACKING ===
+    # Multiple reasons (fund + tech + catalyst). Explicit list with fulfilled flags for UI highlighting.
+    # This is published so frontend can show "which criteria got fulfilled".
     reasons: list[dict] = []
+    criteria: list[dict] = []
     seen = set()
     for fd in (res.factor_details or []):
         if fd.get("pts", 0) > 0 or fd.get("cat") in ("fundamental", "valuation", "health", "ownership", "income", "catalyst"):
             key = fd.get("label", "")
             if key and key not in seen:
-                reasons.append({
+                item = {
                     "text": key,
                     "category": fd.get("cat", "other"),
                     "fulfilled": True,
                     "evidence": fd.get("label"),
                     "pts": fd.get("pts", 0)
-                })
+                }
+                reasons.append(item)
+                criteria.append(item)
                 seen.add(key)
     for al in (res.alerts or []):
         if al and al not in seen:
             cat = "catalyst" if any(x in al.upper() for x in ["ORDER", "FII", "DIV", "PROMOTER", "EARNINGS"]) else "fundamental"
-            reasons.append({"text": al, "category": cat, "fulfilled": True, "evidence": "news/event signal"})
+            item = {"text": al, "category": cat, "fulfilled": True, "evidence": "news/event signal"}
+            reasons.append(item)
+            criteria.append(item)
             seen.add(al)
-    # Add a few from news_titles for deep research feel (orders etc already boosted in registry)
+    # News mining for additional fulfilled criteria (deep research signal)
     for nt in (news_titles or [])[:5]:
         nt_u = nt.upper()
         if any(k in nt_u for k in ["ORDER", "FII", "PROMOTER", "DIVIDEND", "CONTRACT"]) and nt not in seen:
-            reasons.append({"text": f"News: {nt[:80]}", "category": "catalyst", "fulfilled": True, "evidence": nt})
+            item = {"text": f"News catalyst: {nt[:70]}", "category": "catalyst", "fulfilled": True, "evidence": nt}
+            reasons.append(item)
+            criteria.append(item)
             seen.add(nt)
-    metrics["reasons"] = reasons[:12]  # cap for UI cleanliness, multiple not one
-    metrics["fundamental_reasons_count"] = sum(1 for r in reasons if r["category"] in ("fundamental", "valuation", "health", "ownership", "income"))
-    metrics["catalyst_reasons_count"] = sum(1 for r in reasons if r["category"] == "catalyst")
+    metrics["reasons"] = reasons[:12]
+    metrics["criteria"] = criteria[:15]  # explicit fulfillment tracking
+    metrics["fundamental_reasons_count"] = sum(1 for r in criteria if r.get("category") in ("fundamental", "valuation", "health", "ownership", "income"))
+    metrics["catalyst_reasons_count"] = sum(1 for r in criteria if r.get("category") == "catalyst")
+    metrics["fulfilled_criteria_count"] = len([c for c in criteria if c.get("fulfilled")])
+    res.metrics = metrics
+
+    # Strengthen deep research path: run extra mining + publish thesis for single stock
+    # (uses yf info + news from crawlers). Only rich for promising India or high score cases to manage data/load.
+    try:
+        do_deep = (market == "india") or (score >= 45)
+        if do_deep:
+            research = deep_research_thesis(symbol, info or {}, news_titles or [], market, hist)
+            metrics["deep_research"] = research
+            metrics["thesis"] = research.get("thesis_summary", "")
+            # Merge key findings into reasons for visibility
+            for f in research.get("key_findings", [])[:4]:
+                if f.get("criterion") and f.get("status") == "fulfilled":
+                    metrics.setdefault("reasons", []).append({
+                        "text": f"{f['criterion']}: {f.get('detail', '')}",
+                        "category": "fundamental" if "Promoter" in f.get("criterion", "") or "FCF" in f.get("criterion", "") or "Valuation" in f.get("criterion", "") else "catalyst",
+                        "fulfilled": True,
+                        "evidence": f.get("value", "")
+                    })
+    except Exception:
+        pass
+
     res.metrics = metrics
     return res
+
+
+def deep_research_thesis(
+    symbol: str,
+    info: dict[str, Any],
+    news_titles: list[str],
+    market: str,
+    hist: pd.DataFrame | None = None,
+) -> dict[str, Any]:
+    """
+    Strengthened deep research path for a single stock.
+    Uses extra yfinance mining (info already rich + optional more) + crawler news_titles.
+    Publishes a structured thesis with multiple reasons for frontend users.
+    Focused on India fundamentals + catalysts. Keeps data use low (no extra network if possible).
+    """
+    thesis: dict[str, Any] = {
+        "symbol": symbol,
+        "market": market,
+        "thesis_summary": "",
+        "key_findings": [],
+        "sources": ["yfinance_info", "news_crawlers"],
+        "research_timestamp": None,
+    }
+    findings = []
+    # Mine info for deep fund details
+    ph = info.get("heldPercentInsiders") or info.get("promoter_holding_pct")
+    if market == "india" and ph and ph >= 0.35:
+        findings.append({
+            "criterion": "Promoter Holding",
+            "status": "fulfilled",
+            "value": f"{ph*100:.0f}%",
+            "detail": "Strong promoter alignment (skin in the game)"
+        })
+    inst = info.get("heldPercentInstitutions")
+    if market == "india" and inst and inst >= 0.12:
+        findings.append({
+            "criterion": "FII/Institutional Backing",
+            "status": "fulfilled",
+            "value": f"{inst*100:.0f}%",
+            "detail": "Significant institutional / FII interest"
+        })
+    fcf_y = None
+    mcap = info.get("marketCap")
+    fcf = info.get("freeCashflow")
+    if fcf and mcap and mcap > 0:
+        fcf_y = (fcf / mcap) * 100
+        if fcf_y >= 3:
+            findings.append({
+                "criterion": "FCF Yield",
+                "status": "fulfilled",
+                "value": f"{fcf_y:.1f}%",
+                "detail": "Healthy free cash flow generation"
+            })
+    # Revenue / profit quality
+    if info.get("revenueGrowth") and info.get("earningsGrowth"):
+        rg = info["revenueGrowth"] * 100
+        eg = info["earningsGrowth"] * 100
+        if rg > 10 and eg > 10:
+            findings.append({
+                "criterion": "Dual Growth",
+                "status": "fulfilled",
+                "value": f"Rev {rg:.0f}% / Earn {eg:.0f}%",
+                "detail": "Strong top and bottom line growth"
+            })
+    # Dividend
+    dy = info.get("dividendYield")
+    if dy and dy >= 0.02:
+        findings.append({
+            "criterion": "Dividend Yield",
+            "status": "fulfilled",
+            "value": f"{dy*100:.1f}%",
+            "detail": "Attractive and potentially sustainable dividend"
+        })
+    # Valuation cheapness
+    pe = info.get("trailingPE")
+    if pe and pe < 18:
+        findings.append({
+            "criterion": "Valuation",
+            "status": "fulfilled",
+            "value": f"PE {pe:.1f}",
+            "detail": "Reasonably valued relative to growth"
+        })
+    # News deep mining (from crawlers)
+    news_upper = " ".join(news_titles or []).upper()
+    news_findings = []
+    if "ORDER" in news_upper or "CONTRACT" in news_upper:
+        news_findings.append("Recent large order / contract win detected in news")
+    if "FII" in news_upper or "INSTITUTIONAL BUY" in news_upper:
+        news_findings.append("FII / institutional buying activity reported")
+    if "PROMOTER" in news_upper and ("BUY" in news_upper or "INCREASE" in news_upper):
+        news_findings.append("Promoter buying or stake increase signal")
+    if "DIVIDEND" in news_upper:
+        news_findings.append("Dividend related announcement (hike or special)")
+    if news_findings:
+        findings.append({
+            "criterion": "News Catalysts",
+            "status": "fulfilled",
+            "value": f"{len(news_findings)} signals",
+            "detail": " ; ".join(news_findings)
+        })
+        thesis["sources"].append("news_crawlers_deep")
+    # Build summary
+    if findings:
+        thesis["key_findings"] = findings
+        fulfilled = [f["criterion"] for f in findings if f.get("status") == "fulfilled"]
+        thesis["thesis_summary"] = f"Strong fundamentals: {', '.join(fulfilled[:5])}. Multiple technical + fundamental + catalyst reasons support quality."
+    else:
+        thesis["thesis_summary"] = "Standard analysis completed. Check criteria for details."
+    return thesis

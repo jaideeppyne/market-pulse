@@ -34,6 +34,8 @@ class ScannerLoop:
         self._symbol_failures: dict[str, int] = {}
         self._symbol_quarantine_until: dict[str, float] = {}
         self._scan_offsets: dict[str, int] = {}
+        self._provider_backoff_until = 0.0
+        self._provider_backoff_seconds = 0.0
 
     def _eligible_pairs(self, pairs: list[tuple[str, str]]) -> tuple[list[tuple[str, str]], int]:
         """Skip symbols that repeatedly produced no usable market data.
@@ -126,6 +128,30 @@ class ScannerLoop:
         pairs: list[tuple[str, str]] = []
         seen: set[str] = set()
         universe = self.state.universe or {}
+
+        # Priority queue: explicit watchlist and active event/catalyst symbols are
+        # scanned every cycle before the rotating background universe. This keeps
+        # high-interest names fresh while avoiding giant provider bursts.
+        priority: list[tuple[str, str]] = []
+        for watch in self.state.watches or []:
+            key = str((watch or {}).get("symbol") or "").upper()
+            if not key:
+                continue
+            market = "india" if key.endswith((".NS", ".BO")) else "uk" if key.endswith(".L") else "us"
+            priority.append((key, market))
+        for sym, events in events_by_symbol.items():
+            key = str(sym or "").upper()
+            if not key:
+                continue
+            event_market = (events[0] or {}).get("market") if events else None
+            market = event_market or ("india" if key.endswith((".NS", ".BO")) else "uk" if key.endswith(".L") else "us")
+            priority.append((key, market))
+        for sym, market in priority:
+            if sym in seen:
+                continue
+            pairs.append((sym, market))
+            seen.add(sym)
+
         for market in ("india", "us", "uk"):
             symbols = self._rotating_market_window(market, list(universe.get(market, [])), live_limit)
             for sym in symbols:
@@ -133,15 +159,6 @@ class ScannerLoop:
                     continue
                 pairs.append((sym, market))
                 seen.add(sym)
-
-        for sym, events in events_by_symbol.items():
-            key = str(sym or "").upper()
-            if not key or key in seen:
-                continue
-            event_market = (events[0] or {}).get("market") if events else None
-            market = event_market or ("india" if key.endswith((".NS", ".BO")) else "uk" if key.endswith(".L") else "us")
-            pairs.append((key, market))
-            seen.add(key)
 
         return pairs
 
@@ -181,6 +198,13 @@ class ScannerLoop:
 
         while self._running:
             try:
+                if self._provider_backoff_until > time.time():
+                    wait_for = max(1.0, self._provider_backoff_until - time.time())
+                    async with self.state.lock:
+                        self.state.stats["provider_backoff_until"] = self._provider_backoff_until
+                        self.state.stats["provider_backoff_seconds"] = round(wait_for, 1)
+                    await asyncio.sleep(min(wait_for, interval))
+                    continue
                 async with self.state.lock:
                     events_by_symbol = {
                         sym: list(events)
@@ -192,11 +216,9 @@ class ScannerLoop:
                     async with self.state.lock:
                         self.state.stats["symbols_quarantined"] = skipped_quarantined
 
-                # Prioritize India chunks first in batching for better live coverage of India stocks
-                # (helps prevent India tab being stuck on just RELIANCE or few names while US dominates)
-                india_p = [p for p in pairs if p[1] == "india"]
-                us_p = [p for p in pairs if p[1] != "india"]
-                pairs = india_p + us_p
+                # Pair order is already priority queue first (watchlist/events), then rotating
+                # market windows. Preserve that ordering so high-interest symbols do not
+                # get pushed behind broad-market batches.
                 all_results: list[dict] = []
                 batch_total = max(1, (len(pairs) + batch_size - 1) // batch_size)
                 batch_index = 0
@@ -251,10 +273,18 @@ class ScannerLoop:
                     await asyncio.sleep(delay)
 
                 if pairs and not all_results:
+                    self._provider_backoff_seconds = min(max(self._provider_backoff_seconds * 2, 30.0), 900.0)
+                    self._provider_backoff_until = time.time() + self._provider_backoff_seconds
                     logger.warning(
-                        "Price scan produced zero results from %d attempted symbols",
+                        "Price scan produced zero results from %d attempted symbols; provider backoff %.0fs",
                         len(pairs),
+                        self._provider_backoff_seconds,
                     )
+                    async with self.state.lock:
+                        self.state.stats["provider_backoff_seconds"] = self._provider_backoff_seconds
+                else:
+                    self._provider_backoff_seconds = 0.0
+                    self._provider_backoff_until = 0.0
                 await self.state.update_scan(
                     all_results,
                     threshold,

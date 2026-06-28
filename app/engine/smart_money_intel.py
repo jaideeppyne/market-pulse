@@ -8,21 +8,36 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 _EXTRA_FILE = Path(__file__).resolve().parents[2] / "data" / "smart_money_extra.txt"
 
-# Must appear in same headline (or nearby line) as the investor name
+# Must appear in same headline (or nearby line) as the investor name.
+# Tightened to GENUINE acquisition/accumulation language. Deliberately drops
+# loose words that over-fired in the past (portfolio / stake-alone / 13f / entry):
+#   - "portfolio" alone is just a holdings mention, not a buy.
+#   - bare "stake" (without buy/raise/acquire verb) is too loose -> handled via
+#     verb+stake phrases below.
+#   - "13f" is a quarterly filing, not necessarily a fresh buy.
+#   - "entry" / "enters" were ambiguous (market entry, index entry).
 BUY_CONTEXT = re.compile(
     r"\b("
-    r"buy|buys|bought|buying|purchase|purchased|accumulat|"
-    r"stake|disclosure|adds|added|raises?\s+holding|increases?\s+position|"
-    r"builds?\s+position|enters?|entry|picked|picks|portfolio|"
-    r"shareholding|shareholder|promoter|bulk\s+deal|block\s+deal|"
-    r"takes\s+stake|ups\s+stake|open\s+market|"
-    r"congress.*(buy|purchase|trade)|stock\s+act|"
-    r"13f|form\s+4|insider"
+    r"buys?|bought|buying|"
+    r"purchas(?:e|es|ed|ing)|"
+    r"accumulat(?:e|es|ed|ing|ion)|"
+    r"acquir(?:e|es|ed|ing)|acquisition|"
+    r"adds?\s+(?:to\s+)?(?:his\s+|her\s+|its\s+|their\s+|the\s+|a\s+|an\s+|more\s+|further\s+)?(?:stake|holding|position|shares?)|"
+    r"added\s+(?:to\s+)?(?:his\s+|her\s+|its\s+|their\s+|the\s+|a\s+|an\s+|more\s+|further\s+)?(?:stake|holding|position|shares?)|"
+    r"raises?\s+(?:his\s+|her\s+|its\s+|their\s+|the\s+)?(?:stake|holding|position)|raised\s+(?:his\s+|her\s+|its\s+|their\s+|the\s+)?(?:stake|holding|position)|"
+    r"increases?\s+(?:his\s+|her\s+|its\s+|their\s+|the\s+)?(?:stake|holding|position)|increased\s+(?:his\s+|her\s+|its\s+|their\s+|the\s+)?(?:stake|holding|position)|"
+    r"builds?\s+(?:his\s+|her\s+|its\s+|their\s+|a\s+|the\s+)?(?:stake|holding|position)|built\s+(?:his\s+|her\s+|its\s+|their\s+|a\s+|the\s+)?(?:stake|holding|position)|"
+    r"buys?\s+stake|takes?\s+stake|took\s+stake|ups\s+stake|upped\s+stake|hikes?\s+stake|"
+    r"picks?\s+up\s+(?:stake|shares?)|picked\s+up\s+(?:stake|shares?)|"
+    r"open[-\s]market\s+(?:buy|purchase)|"
+    r"bulk\s+deal|block\s+deal|"
+    r"form\s+4\s+(?:buy|purchase|filing)|insider\s+buy(?:ing)?"
     r")\b",
     re.I,
 )
@@ -32,16 +47,53 @@ NON_EQUITY_PURCHASE_CONTEXT = re.compile(
     re.I,
 )
 
+# Frontend-facing investor taxonomy: legend | politician | fii | insider | promoter.
+_KIND_TO_INVESTOR_TYPE = {
+    "india_legend": "legend",
+    "us_legend": "legend",
+    "politician_us": "politician",
+    "politician_india": "politician",
+    "foreign_india": "fii",
+}
+
+# Acquisition verbs -> normalized action label surfaced to the UI.
+_ACTION_PATTERNS = [
+    ("bulk_deal", re.compile(r"\b(bulk|block)\s+deal\b", re.I)),
+    ("stake_increase", re.compile(r"\b(?:raises?|raised|increases?|increased|ups|upped|hikes?|builds?|built|adds?|added)\s+(?:to\s+)?(?:his\s+|her\s+|its\s+|their\s+|the\s+|a\s+|an\s+|more\s+|further\s+)?(?:stake|holding|position|shares?)\b", re.I)),
+    ("new_stake", re.compile(r"\b(takes?|took|buys?\s+stake|picks?\s+up|picked\s+up|new)\s+(?:stake|position|shares?)\b", re.I)),
+    ("insider_buy", re.compile(r"\binsider\s+buy(?:ing)?|form\s+4\b", re.I)),
+    ("buy", re.compile(r"\b(buys?|bought|buying|purchas|acquir|accumulat|open[-\s]market)\b", re.I)),
+]
+
+
+def _classify_action(text: str) -> str:
+    for label, rx in _ACTION_PATTERNS:
+        if rx.search(text or ""):
+            return label
+    return "buy"
+
+
+def _make_recency() -> dict[str, Any]:
+    """Recency stamp for a freshly detected smart-money signal.
+
+    Headlines feed the live news window, so detection time is the best
+    available proxy for 'how recent'. age_seconds is 0 at detection and lets
+    consumers (radar/candidate ranking) decay older snapshots.
+    """
+    now = datetime.now(timezone.utc)
+    return {"detected_at": now.isoformat(), "age_seconds": 0, "is_fresh": True}
+
+
 # India: top tracked retail / PMS / MF legends (user-requested + widely followed)
 # Each has 'quality' for "how good": short description of edge/track record. Politicians/relatives included for attention premium.
 INDIA_LEGENDS: list[dict[str, Any]] = [
     {"id": "madhusudan_kela", "name": "Madhusudan Kela", "rx": r"madhusudan\s+kela|mk\s+kela|kela\s+fund", "quality": "Legendary India investor (strong midcap track record, high conviction picks)"},
-    {"id": "ashish_kacholia", "name": "Ashish Kacholia", "rx": r"ashish\s+kacholia|kacholia", "quality": "Top PMS legend (consistent alpha in small/midcaps over decades)"},
-    {"id": "vijay_kedia", "name": "Vijay Kedia", "rx": r"vijay\s+kedia", "quality": "Iconic value investor (long-term multibagger track record)"},
-    {"id": "raakesh_jhunjhunwala", "name": "Raakesh Jhunjhunwala (Late)", "rx": r"raakesh\s+jhunjhunwala|rakesh\s+jhunjhunwala|jhunjhunwala", "quality": "India's 'Warren Buffett' (legendary returns, market-moving influence)"},
-    {"id": "radhakishan_damani", "name": "Radhakishan Damani", "rx": r"radhakishan\s+damani|rk\s+damani|damani", "quality": "DMart founder & value legend (exceptional long-term compounding)"},
+    {"id": "ashish_kacholia", "name": "Ashish Kacholia", "rx": r"\bashish\s+kacholia\b|\bkacholia\b", "quality": "Top PMS legend (consistent alpha in small/midcaps over decades)"},
+    {"id": "vijay_kedia", "name": "Vijay Kedia", "rx": r"\bvijay\s+kedia\b|\bkedia\b", "quality": "Iconic value investor (long-term multibagger track record)"},
+    {"id": "raakesh_jhunjhunwala", "name": "Raakesh Jhunjhunwala (Late)", "rx": r"\braakesh\s+jhunjhunwala\b|\brakesh\s+jhunjhunwala\b|\bjhunjhunwala\b", "quality": "India's 'Warren Buffett' (legendary returns, market-moving influence)"},
+    {"id": "radhakishan_damani", "name": "Radhakishan Damani", "rx": r"\bradhakishan\s+damani\b|\brk\s+damani\b|\bdamani\b", "quality": "DMart founder & value legend (exceptional long-term compounding)"},
     {"id": "dolly_khanna", "name": "Dolly Khanna", "rx": r"dolly\s+khanna|rajiv\s+khanna", "quality": "Sharp small-cap picker (high returns from underfollowed names)"},
-    {"id": "porinju_veliyath", "name": "Porinju Veliyath", "rx": r"porinju|veliyath", "quality": "Aggressive value investor (known for early multibaggers)"},
+    {"id": "porinju_veliyath", "name": "Porinju Veliyath", "rx": r"\bporinju\b|\bveliyath\b", "quality": "Aggressive value investor (known for early multibaggers)"},
     {"id": "shankar_sharma", "name": "Shankar Sharma", "rx": r"shankar\s+sharma|first\s+dubai", "quality": "Global macro thinker & activist (strong India calls)"},
     {"id": "nemish_shah", "name": "Nemish Shah", "rx": r"nemish\s+shah|enam", "quality": "Enam Securities co-founder (deep value, long-term edge)"},
     {"id": "sunil_singhania", "name": "Sunil Singhania", "rx": r"sunil\s+singhania|abakkus", "quality": "Former UTI star, now Abakkus (excellent smallcap performance)"},
@@ -59,29 +111,29 @@ INDIA_LEGENDS: list[dict[str, Any]] = [
 
 # US: whales, activists, top funds
 US_LEGENDS: list[dict[str, Any]] = [
-    {"id": "warren_buffett", "name": "Warren Buffett", "rx": r"warren\s+buffett|berkshire\s+hathaway|berkshire", "quality": "Legendary (historical CAGR outperformance, value investing pioneer)"},
+    {"id": "warren_buffett", "name": "Warren Buffett", "rx": r"\bwarren\s+buffett\b|\bberkshire\s+hathaway\b|\bberkshire\b", "quality": "Legendary (historical CAGR outperformance, value investing pioneer)"},
     {"id": "bill_ackman", "name": "Bill Ackman", "rx": r"bill\s+ackman|pershing\s+square", "quality": "Activist (high conviction, successful turnarounds like CP)"},
-    {"id": "carl_icahn", "name": "Carl Icahn", "rx": r"carl\s+icahn|icahn\s+enterprises", "quality": "Legendary activist (decades of alpha through activism)"},
+    {"id": "carl_icahn", "name": "Carl Icahn", "rx": r"\bcarl\s+icahn\b|\bicahn\s+enterprises\b|\bicahn\b", "quality": "Legendary activist (decades of alpha through activism)"},
     {"id": "ray_dalio", "name": "Ray Dalio", "rx": r"ray\s+dalio|bridgewater", "quality": "Macro legend (Bridgewater principles, economic cycle expert)"},
     {"id": "cathie_wood", "name": "Cathie Wood", "rx": r"cathie\s+wood|ark\s+invest|arkk", "quality": "Growth/Disruptive (strong in tech/innovation, volatile but high conviction)"},
-    {"id": "stanley_druckenmiller", "name": "Stanley Druckenmiller", "rx": r"stanley\s+druckenmiller|druckenmiller", "quality": "Macro master (Soros protege, excellent long-term returns)"},
+    {"id": "stanley_druckenmiller", "name": "Stanley Druckenmiller", "rx": r"\bstanley\s+druckenmiller\b|\bdruckenmiller\b", "quality": "Macro master (Soros protege, excellent long-term returns)"},
     {"id": "david_tepper", "name": "David Tepper", "rx": r"david\s+tepper|appaloosa", "quality": "Distressed/Activist (high returns from complex situations)"},
     {"id": "daniel_loeb", "name": "Daniel Loeb", "rx": r"daniel\s+loeb|third\s+point", "quality": "Activist (sharp letters, good activist returns)"},
     {"id": "seth_klarman", "name": "Seth Klarman", "rx": r"seth\s+klarman|baupost", "quality": "Value legend (Margin of Safety author, conservative alpha)"},
     {"id": "paul_tudor_jones", "name": "Paul Tudor Jones", "rx": r"paul\s+tudor\s+jones", "quality": "Macro trader (legendary trader, risk management expert)"},
-    {"id": "michael_burry", "name": "Michael Burry", "rx": r"michael\s+burry|scion\s+asset", "quality": "Contrarian value (Big Short fame, deep value edge)"},
+    {"id": "michael_burry", "name": "Michael Burry", "rx": r"\bmichael\s+burry\b|\bscion\s+asset\b|\bburry\b", "quality": "Contrarian value (Big Short fame, deep value edge)"},
     {"id": "george_soros", "name": "George Soros", "rx": r"george\s+soros|soros\s+fund", "quality": "Macro legend (broke the Bank of England, reflexivity theory)"},
-    {"id": "tiger_global", "name": "Tiger Global", "rx": r"tiger\s+global", "quality": "Growth investor (Chase Coleman, high growth tech focus)"},
-    {"id": "coatue", "name": "Coatue", "rx": r"coatue\s+management|coatue", "quality": "Tech/long-short (Philippe Laffont, strong tech returns)"},
-    {"id": "softbank", "name": "SoftBank / Masa", "rx": r"softbank|masayoshi\s+son", "quality": "Visionary (Masa Son, big bets on tech like Alibaba)"},
-    {"id": "blackrock", "name": "BlackRock", "rx": r"blackrock|larry\s+fink", "quality": "Institutional giant (Larry Fink, ESG/infra influence)"},
+    {"id": "tiger_global", "name": "Tiger Global", "rx": r"\btiger\s+global\b", "quality": "Growth investor (Chase Coleman, high growth tech focus)"},
+    {"id": "coatue", "name": "Coatue", "rx": r"\bcoatue\s+management\b|\bcoatue\b", "quality": "Tech/long-short (Philippe Laffont, strong tech returns)"},
+    {"id": "softbank", "name": "SoftBank / Masa", "rx": r"\bsoftbank\b|\bmasayoshi\s+son\b", "quality": "Visionary (Masa Son, big bets on tech like Alibaba)"},
+    {"id": "blackrock", "name": "BlackRock", "rx": r"\bblackrock\b|\blarry\s+fink\b", "quality": "Institutional giant (Larry Fink, ESG/infra influence)"},
     {"id": "vanguard", "name": "Vanguard", "rx": r"vanguard\s+group", "quality": "Passive giant (index leader, long-term holder)"},
     {"id": "fidelity", "name": "Fidelity", "rx": r"fidelity\s+investments|fidelity\s+management", "quality": "Active fund (strong research, consistent performers)"},
 ]
 
 # Politicians & govt disclosures (high attention)
 POLITICIANS_US: list[dict[str, Any]] = [
-    {"id": "nancy_pelosi", "name": "Nancy Pelosi", "rx": r"nancy\s+pelosi|pelosi"},
+    {"id": "nancy_pelosi", "name": "Nancy Pelosi", "rx": r"\bnancy\s+pelosi\b|\bpelosi\b"},
     {"id": "congress_trading", "name": "US Congress trade", "rx": r"congress(man|woman|ional).*(stock|trade|buy|purchase)|senator.*(buy|purchase|stock)|house\s+member.*stock", "require_buy": False},
     {"id": "stock_act", "name": "STOCK Act disclosure", "rx": r"stock\s+act|congressional\s+trading|capitol\s+trades", "require_buy": False},
     {"id": "josh_gottheimer", "name": "Josh Gottheimer", "rx": r"josh\s+gottheimer"},
@@ -111,6 +163,11 @@ class SmartMoneyMatch:
     tier: str  # S+ | S | A
     headline: str = ""
     quality: str = ""  # e.g. "Legendary (historical CAGR outperformance, value investing pioneer)"
+    # --- enriched (additive) fields surfaced to the Radar / frontend ----------
+    investor_type: str = ""   # legend | politician | fii | insider | promoter
+    action: str = "buy"       # buy | stake_increase | new_stake | bulk_deal | insider_buy
+    recency: dict[str, Any] = field(default_factory=dict)  # {detected_at, age_seconds, is_fresh}
+    blurb: str = ""           # short "why it matters" (reuses registry 'quality')
 
     def alert_text(self) -> str:
         prefix = {
@@ -135,8 +192,37 @@ class SmartMoneyIntel:
     primary_alert: str | None = None
     names: list[str] = field(default_factory=list)
 
+    def _primary_match(self) -> "SmartMoneyMatch | None":
+        if not self.matches:
+            return None
+        prio = {"S+": 0, "S": 1, "A": 2}
+        kprio = {"india_legend": 0, "us_legend": 1, "politician_us": 2, "politician_india": 2, "foreign_india": 3}
+        return sorted(self.matches, key=lambda m: (prio.get(m.tier, 9), kprio.get(m.kind, 9)))[0]
+
     def to_metrics(self) -> dict[str, Any]:
+        primary = self._primary_match()
+        primary_summary = (
+            {
+                "id": primary.entity_id,
+                "name": primary.display_name,
+                "kind": primary.kind,
+                "tier": primary.tier,
+                "investor_type": primary.investor_type,
+                "action": primary.action,
+                "recency": primary.recency,
+                "blurb": primary.blurb or primary.quality,
+            }
+            if primary
+            else None
+        )
         return {
+            # top-level mirror of the strongest hit so the Radar can read the
+            # enriched fields directly (investor_type / action / recency / blurb):
+            "primary": primary_summary,
+            "investor_type": primary_summary["investor_type"] if primary_summary else None,
+            "action": primary_summary["action"] if primary_summary else None,
+            "recency": primary_summary["recency"] if primary_summary else None,
+            "blurb": primary_summary["blurb"] if primary_summary else None,
             "hits": [
                 {
                     "id": m.entity_id,
@@ -145,6 +231,11 @@ class SmartMoneyIntel:
                     "tier": m.tier,
                     "headline": m.headline[:120],
                     "quality": m.quality,
+                    # enriched (optional) fields the Radar/frontend reads:
+                    "investor_type": m.investor_type,
+                    "action": m.action,
+                    "recency": m.recency,
+                    "blurb": m.blurb or m.quality,
                 }
                 for m in self.matches[:8]
             ],
@@ -235,13 +326,18 @@ def analyze_smart_money(titles: list[str], *, market: str = "both") -> SmartMone
             if not _title_matches(entry, t):
                 continue
             seen.add(eid)
+            quality = entry.get("quality", "")
             m = SmartMoneyMatch(
                 entity_id=eid,
                 display_name=entry["name"],
                 kind=kind,
                 tier=entry["tier"],
                 headline=t,
-                quality=entry.get("quality", ""),
+                quality=quality,
+                investor_type=_KIND_TO_INVESTOR_TYPE.get(kind, "legend"),
+                action=_classify_action(t),
+                recency=_make_recency(),
+                blurb=quality,  # reuse registry 'quality' as the "why it matters" blurb
             )
             intel.matches.append(m)
             intel.names.append(entry["name"])

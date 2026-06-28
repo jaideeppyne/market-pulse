@@ -30,17 +30,43 @@ def _parse_dt(value: Any) -> datetime | None:
 
 
 def _recency_boost(event: dict[str, Any]) -> float:
+    """Steeper reward for the freshest whale activity so today's moves rank first."""
     dt = _parse_dt(event.get("published_at") or event.get("created_at"))
     if not dt:
         return 0.0
     age_hours = max(0.0, (datetime.now(timezone.utc) - dt.astimezone(timezone.utc)).total_seconds() / 3600.0)
+    if age_hours <= 1:
+        return 30.0
+    if age_hours <= 3:
+        return 24.0
     if age_hours <= 6:
         return 18.0
     if age_hours <= 24:
         return 12.0
     if age_hours <= 72:
         return 6.0
+    if age_hours <= 168:  # within a week, small residual
+        return 2.0
     return 0.0
+
+
+# Conviction multiplier by event type: legend/CEO/insider open-market buys are
+# the highest-signal whale activity and should rank above generic filings.
+_CONVICTION_WEIGHT = {
+    "ceo_buy": 1.30,
+    "ceo_buy_news": 1.25,
+    "cfo_buy": 1.20,
+    "director_buy": 1.15,
+    "insider_open_market_buy": 1.15,
+    "promoter_or_insider_buy": 1.12,
+    "news_insider_buy": 1.05,
+    "bulk_block_deal": 1.05,
+    "sec_form4_filing": 1.00,
+}
+
+
+def _conviction_multiplier(event_type: str) -> float:
+    return _CONVICTION_WEIGHT.get(event_type, 1.0)
 
 
 def build_event_candidates(
@@ -71,7 +97,15 @@ def build_event_candidates(
         base = EVENT_BASE_SCORE.get(event_type, 55.0)
         severity = float(strongest.get("severity") or 0)
         scan_score = float(metrics.get("buy_score") or scan.get("score") or 0)
-        candidate_score = base + severity * 2.0 + _recency_boost(strongest) + min(scan_score, 100.0) * 0.2
+        recency_pts = _recency_boost(strongest)
+        conviction = _conviction_multiplier(event_type)
+        # Freshness + conviction dominate; base/severity/scan provide the floor.
+        candidate_score = (
+            base * conviction
+            + severity * 2.0
+            + recency_pts * 1.5
+            + min(scan_score, 100.0) * 0.2
+        )
 
         candidates.append(
             {
@@ -91,6 +125,8 @@ def build_event_candidates(
                 "day_chg_pct": metrics.get("day_chg_pct"),
                 "rvol": metrics.get("rvol"),
                 "has_scan": bool(scan),
+                "recency_boost": round(recency_pts, 1),
+                "conviction": round(conviction, 2),
                 "events": ordered[:5],
             }
         )

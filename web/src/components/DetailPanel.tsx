@@ -1,7 +1,7 @@
 import { useAnalyzeQuery, useAddWatchMutation, useAddPositionMutation } from '../store/api'
 import { openFactors, selectSymbol } from '../store/uiSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
-import { confTier, marketOf, factorsDisplay, CURRENCY } from '../lib/format'
+import { confTier, marketOf, factorsDisplay, displayName, companyName, whaleView, CURRENCY } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
 import BuyScorePill from './ui/BuyScorePill'
@@ -17,14 +17,12 @@ export default function DetailPanel() {
     return pools.find((r) => r.symbol === sym) || null
   })
   const needFetch = !!sym && (!liveRow || !liveRow.factor_breakdown)
-  const { data: fetched, isFetching, isError, error } = useAnalyzeQuery(sym, { skip: !needFetch })
+  const { data: fetched, isFetching } = useAnalyzeQuery(sym || '', { skip: !needFetch })
   const [addWatch] = useAddWatchMutation()
   const [addPosition] = useAddPositionMutation()
   const toast = useToast()
 
   const row = (fetched && fetched.symbol) ? fetched : liveRow
-  const queryError = error as any
-  const errorText = fetched?.error || queryError?.error || queryError?.data?.detail || 'No market data returned for this symbol.'
 
   if (!sym) {
     return (
@@ -34,22 +32,19 @@ export default function DetailPanel() {
       </div>
     )
   }
-  if (fetched?.error || isError) {
-    return (
-      <div className="detail-panel">
-        <h2 className="detail-panel__title">Stock detail</h2>
-        <div className="detail-empty detail-empty--error">
-          <p>Could not analyze {sym}</p>
-          <p className="muted">{errorText}</p>
-        </div>
-      </div>
-    )
-  }
   if (!row || !row.metrics) {
+    const err = (row as { error?: string } | null)?.error || (fetched as { error?: string } | undefined)?.error
+    const es = String(err || '').toLowerCase()
+    const msg = err
+      ? (es.includes('rate') || es.includes('429') ? `Too many searches just now — wait a few seconds and try ${sym} again.`
+        : es.includes('invalid') ? `"${sym}" doesn't look like a valid ticker.`
+        : es.includes('no data') ? `No market data found for ${sym} — it may be delisted, mistyped, or not covered.`
+        : `Couldn't analyze ${sym}: ${err}`)
+      : (isFetching ? `Analyzing ${sym}…` : `No data yet for ${sym}`)
     return (
       <div className="detail-panel">
         <h2 className="detail-panel__title">Stock detail</h2>
-        <div className="detail-empty"><p>{isFetching ? `Analyzing ${sym}…` : `No data yet for ${sym}`}</p><p className="muted">{isFetching ? 'Running yfinance history, fundamentals, news, smart money, and factor engine.' : 'Press Enter in search or use Analyze again.'}</p></div>
+        <div className="detail-empty"><p>{msg}</p><p className="muted">{err ? 'Check the symbol, or try one from the Hot Movers table.' : 'Running the full engine'}</p></div>
       </div>
     )
   }
@@ -65,6 +60,7 @@ export default function DetailPanel() {
   const passed = (row.factor_breakdown || []).filter((x) => x.status === 'pass')
   const risk = (row.factor_breakdown || []).filter((x) => x.status === 'risk')
   const failed = (row.factor_breakdown || []).filter((x) => x.status === 'fail')
+  const smHits = (m.smart_money?.hits || []).map((h) => whaleView(h)).filter((w) => w.investor)
 
   const watch = () => { addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }
   const paper = () => addPosition({ symbol: sym, qty: 100, entry_price: m.price, entry_score: buy }).unwrap()
@@ -75,10 +71,10 @@ export default function DetailPanel() {
     <div className="detail-panel">
       <h2 className="detail-panel__title">Stock detail</h2>
       <div className="detail">
-        <h3 onClick={() => dispatch(openFactors(sym))} title="Open factor breakdown">
+        <h3 onClick={() => dispatch(openFactors(sym))} title={`${row.symbol}${companyName(row) ? ' — ' + companyName(row) : ''} · open factor breakdown`}>
           <MarketBadge market={mkt} /> {row.symbol}
         </h3>
-        <div className="meta-line">{m.name || ''}{m.sector ? ` · ${m.sector}` : ''}</div>
+        <div className="meta-line" title={companyName(row) || m.sector || ''}>{displayName(row)}{m.sector && companyName(row) ? ` · ${m.sector}` : ''}</div>
         <div className="meta-line"><span className="sym__ticker">{cur}{m.price}</span> <span className={'day ' + dayCls}>{day > 0 ? '+' : ''}{day}%</span> <span className="muted">· rel vol {m.rvol ?? '—'}×</span></div>
 
         <div className="detail-score-row">
@@ -89,7 +85,7 @@ export default function DetailPanel() {
 
         {row.sparkline && row.sparkline.length > 1 && <div className="spark-large"><Sparkline values={row.sparkline} w={300} h={70} /></div>}
 
-        <div className="factor-summary" style={{ cursor: 'pointer' }} onClick={() => dispatch(openFactors(sym))}>
+        <div className="factor-summary" style={{ cursor: 'pointer' }} title="Click to open the full factor breakdown" onClick={() => dispatch(openFactors(sym))}>
           <span className="fs pass">{passed.length} passed</span>
           {risk.length > 0 && <span className="fs risk">{risk.length} risk</span>}
           <span className="fs fail">{failed.length} failed</span>
@@ -105,13 +101,29 @@ export default function DetailPanel() {
           </>
         )}
 
+        {smHits.length > 0 && (
+          <div className="detail-whales">
+            <p className="section-label">Smart money</p>
+            {smHits.slice(0, 4).map((w, i) => (
+              <div key={i} className="whale-mini" title={w.blurb || w.investor}>
+                <span className="whale-mini__name">{w.investor}</span>
+                {w.typeLabel && <span className={'whale-type whale-type--' + w.typeLabel.toLowerCase()}>{w.typeLabel}</span>}
+                {w.conviction && <span className="whale-conv">{w.conviction}</span>}
+                {w.action && <span className="whale-action">{w.action}</span>}
+                {w.recency && <span className="whale-mini__time muted">{w.recency}</span>}
+                {w.blurb && <span className="whale-mini__blurb">{w.blurb}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {row.alerts && row.alerts.length > 0 && <ul className="alerts">{row.alerts.slice(0, 6).map((a, i) => <li key={i}>{a}</li>)}</ul>}
 
         <div className="thesis-head" style={{ marginTop: 12 }}>
-          <button className="tiny" onClick={() => dispatch(openFactors(sym))}>Factors {hit}/{total}</button>
-          <button className="tiny" onClick={watch}>★ Watch</button>
-          <button className="tiny" onClick={paper}>📁 Paper</button>
-          <button className="tiny" onClick={() => dispatch(selectSymbol(null))}>Close</button>
+          <button className="tiny" title="Open the full weighted factor checklist" onClick={() => dispatch(openFactors(sym))}>Factors {hit}/{total}</button>
+          <button className="tiny" title="Add this stock to My List (watchlist)" onClick={watch}>★ Watch</button>
+          <button className="tiny" title="Log a one-click paper buy (100 shares at current price)" onClick={paper}>📁 Paper</button>
+          <button className="tiny" title="Close this detail panel" onClick={() => dispatch(selectSymbol(null))}>Close</button>
         </div>
       </div>
     </div>
