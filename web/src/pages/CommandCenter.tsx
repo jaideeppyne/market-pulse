@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import StatCards from '../components/StatCards'
 import TopPicks from '../components/TopPicks'
+import LiveTicker from '../components/LiveTicker'
+import SectorPulse from '../components/SectorPulse'
 import ScanActivity from '../components/ScanActivity'
 import HotTable from '../components/HotTable'
 import IntelFeed from '../components/IntelFeed'
@@ -90,8 +92,10 @@ export default function CommandCenter() {
 
   return (
     <>
+      <LiveTicker />
       <TopPicks />
       <StatCards />
+      <SectorPulse />
       <div className="cc-layout">
         <div className="cc-main">
           <div className="toolbar">

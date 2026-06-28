@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAppSelector } from '../store/hooks'
-import { getHotPool, researchOf, displayName } from '../lib/format'
+import { getHotPool, researchOf, displayName, timeAgo } from '../lib/format'
 import type { Row } from '../types'
 
 const PHASES = [
@@ -99,7 +99,19 @@ export default function ScanActivity({ discovering = false, fullJob = null }: { 
     if (discovering || fullActive) { seenRef.current = new Set(); setFeed([]) }
   }, [discovering, fullActive])
 
-  if (!active && feed.length === 0) return null
+  // Always-on heartbeat: even when no scan is mid-flight, show a slim live bar
+  if (!active && feed.length === 0) {
+    const lastTick = stats.last_price_tick || stats.last_price_scan
+    return (
+      <section className="scan-activity is-idle">
+        <div className="scan-activity__top">
+          <span className="scan-dot live" />
+          <span className="scan-phase">Live · {Number(stats.symbols_tracked || 0)} symbols tracked{stats.hot_count ? ` · ${stats.hot_count} hot setups` : ''}</span>
+          <span className="scan-batch">{lastTick ? `updated ${timeAgo(lastTick)}` : 'connecting…'}</span>
+        </div>
+      </section>
+    )
+  }
 
   const phaseText = fullActive ? `Exhaustive scan — ${PHASES[phaseIdx]}`
     : discovering ? `Discovering — ${PHASES[phaseIdx]}`
