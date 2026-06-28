@@ -31,7 +31,7 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   const nm = displayName(row)
   // Prefer rich reasons/criteria from backend for valuable insights (fundamentals, catalysts) instead of generic sector or single alert.
   // This makes the constantly-visible table actually useful to end users.
-  const richReasons = (row.why_good_reasons || m.reasons || row.criteria || []).slice(0, 2)
+  const richReasons = ((row as any).why_good_reasons || (m as any).reasons || (row as any).criteria || []).slice(0, 2)
   const qtag = (row.research?.tags || [])[0]
   const reason = richReasons.length > 0
     ? richReasons.map((r: any) => (typeof r === 'string' ? r : r.text || r)).join(' • ')

@@ -123,16 +123,16 @@ export default function DetailPanel() {
         ) : null}
 
         {/* Fallback thesis from backend reasons when no graded research is available */}
-        {!research && ((row.why_good_reasons && row.why_good_reasons.length > 0) || (row.criteria && row.criteria.length > 0)) ? (
+        {!research && (((row as any).why_good_reasons && (row as any).why_good_reasons.length > 0) || ((row as any).criteria && (row as any).criteria.length > 0)) ? (
           <>
             <p className="section-label">Why this stock stands out</p>
             <ul className="reasons-list">
-              {(row.why_good_reasons || row.criteria || []).slice(0, 5).map((r: any, i: number) => {
+              {((row as any).why_good_reasons || (row as any).criteria || []).slice(0, 5).map((r: any, i: number) => {
                 const text = typeof r === 'string' ? r : (r.text || r.label || JSON.stringify(r));
                 return <li key={i}>{text}</li>;
               })}
             </ul>
-            {row.thesis && <p className="thesis-summary muted">{row.thesis}</p>}
+            {(row as any).thesis && <p className="thesis-summary muted">{(row as any).thesis}</p>}
           </>
         ) : passed.length > 0 && (
           <>
