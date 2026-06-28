@@ -1,4 +1,5 @@
 import StatCards from '../components/StatCards'
+import TopPicks from '../components/TopPicks'
 import HotTable from '../components/HotTable'
 import IntelFeed from '../components/IntelFeed'
 import DetailPanel from '../components/DetailPanel'
@@ -61,6 +62,7 @@ export default function CommandCenter() {
 
   return (
     <>
+      <TopPicks />
       <StatCards />
       <div className="cc-layout">
         <div className="cc-main">

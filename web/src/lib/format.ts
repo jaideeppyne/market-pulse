@@ -92,6 +92,43 @@ export function gradeRank(row: Row) {
   return GRADE_RANK[String(researchOf(row)?.grade || '')] ?? 0
 }
 
+// Flatten a row's grouped research reasons into a single ordered list (with group context)
+export function flatReasons(row: Row, n = 4): { group: string; text: string }[] {
+  const r = researchOf(row)
+  if (!r || !r.groups) return []
+  const out: { group: string; text: string }[] = []
+  for (const g of r.groups) {
+    for (const reason of (g.reasons || [])) out.push({ group: g.title, text: reason })
+  }
+  return out.slice(0, n)
+}
+
+// Pick the most compelling stocks to feature on the homepage hero.
+// Prefers fundamentally-strong, higher grade, with real reasons, then buy score.
+export function topPicks(rows: Row[] = [], n = 6): Row[] {
+  const scored = rows
+    .filter((r) => {
+      const res = researchOf(r)
+      return res && (res.reason_count || 0) > 0
+    })
+    .map((r) => {
+      const res = researchOf(r)
+      const strong = res?.fundamentally_strong ? 1 : 0
+      const score = strong * 100000 + gradeRank(r) * 1000 + Math.round(rankScore(r))
+      return { r, score }
+    })
+    .sort((a, b) => b.score - a.score)
+  const seen = new Set<string>()
+  const out: Row[] = []
+  for (const { r } of scored) {
+    if (seen.has(r.symbol)) continue
+    seen.add(r.symbol)
+    out.push(r)
+    if (out.length >= n) break
+  }
+  return out
+}
+
 export function filterAndSort(rows: Row[] = [], ui: Partial<UiState> = {}) {
   const q = String(ui.search || '').trim().toUpperCase()
   const filtered = rows.filter((row) => {
