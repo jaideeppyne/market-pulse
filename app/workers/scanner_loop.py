@@ -238,6 +238,13 @@ class ScannerLoop:
                             for sym, events in self.state.events_by_symbol.items()
                         }
                     batch_results: list[dict] = []
+                    # Publish which symbols are being analyzed right now (live internals for UI)
+                    try:
+                        async with self.state.lock:
+                            self.state.stats["analyzing_symbols"] = [s for s, _ in chunk][:16]
+                        self.state.broadcast_event.set()
+                    except Exception:
+                        pass
                     for mkt, syms in by_market.items():
                         if syms:
                             # Split the (already small) live core into tiny sub-batches of 5 with sleep.
@@ -293,6 +300,13 @@ class ScannerLoop:
                     batch_total=batch_total,
                     attempted_count=len(pairs),
                 )
+                # Clear the live 'analyzing now' list — pass complete
+                try:
+                    async with self.state.lock:
+                        self.state.stats["analyzing_symbols"] = []
+                    self.state.broadcast_event.set()
+                except Exception:
+                    pass
                 # Refresh earnings panel with latest scores
                 async with self.state.lock:
                     earn_list = list(self.state.earnings)

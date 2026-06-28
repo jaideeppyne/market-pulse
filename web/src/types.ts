@@ -80,6 +80,7 @@ export interface Research {
 export interface Row {
   symbol: string
   research?: Research
+  top_factors?: { id?: string; label?: string; category?: string; tier?: string; weighted_points?: number }[]
   market?: Market | string
   score?: number
   buy_score?: number
@@ -119,6 +120,7 @@ export interface ClientAlert {
 export interface SnapshotStats {
   market_events_count?: number
   symbols_tracked?: number
+  analyzing_symbols?: string[]
   last_full_price_scan_result_count?: number
   last_price_batch_result_count?: number
   last_full_price_scan_attempted?: number

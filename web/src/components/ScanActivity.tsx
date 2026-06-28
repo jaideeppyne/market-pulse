@@ -11,8 +11,8 @@ const PHASES = [
 ]
 
 type FullJob = { id?: string; status: string; progress: number } | null
+type Feed = { sym: string; name: string; grade: string; facs: string[]; hit?: number; total?: number }
 
-// Smoothly animate a number toward its target so counters tick up.
 function useCountUp(target: number, ms = 600) {
   const [val, setVal] = useState(target)
   const from = useRef(target)
@@ -35,6 +35,14 @@ function useCountUp(target: number, ms = 600) {
   return val
 }
 
+function factorsOf(r: Row): { facs: string[]; hit?: number; total?: number } {
+  const tf = ((r as any).top_factors || (r.metrics as any)?.top_weighted_factors || []) as any[]
+  const facs = tf.map((f) => f?.label || f?.id).filter(Boolean).slice(0, 6)
+  const hit = (r as any).factors_hit ?? (r.metrics as any)?.factors_hit
+  const total = (r as any).factors_total ?? (r.metrics as any)?.factors_total
+  return { facs, hit, total }
+}
+
 export default function ScanActivity({ discovering = false, fullJob = null }: { discovering?: boolean; fullJob?: FullJob }) {
   const data = useAppSelector((s) => s.live.data)
   const stats: any = data?.stats || {}
@@ -44,22 +52,19 @@ export default function ScanActivity({ discovering = false, fullJob = null }: { 
   const bgScanning = !!stats.scan_in_progress
   const active = discovering || fullActive || bgScanning
 
-  // progress: full-scan job % wins; else batch X/total
   const batch = Number(stats.scan_batch || 0)
   const batchTotal = Number(stats.scan_batches_total || 0)
   const pct = fullActive
     ? Math.max(5, Math.min(99, fullJob?.progress || 0))
-    : batchTotal > 0
-      ? Math.round((batch / batchTotal) * 100)
-      : (active ? 8 : 0)
+    : batchTotal > 0 ? Math.round((batch / batchTotal) * 100) : (active ? 8 : 0)
 
-  // counters
   const symbols = useCountUp(Number(stats.symbols_tracked || 0))
   const candidates = useCountUp(Number(stats.last_price_batch_result_count || 0))
   const hot = useCountUp(Number(stats.hot_count || 0))
   const strong = useCountUp(useMemo(() => pool.filter((r) => researchOf(r)?.fundamentally_strong).length, [pool]))
 
-  // rotating phase
+  const analyzing: string[] = stats.analyzing_symbols || []
+
   const [phaseIdx, setPhaseIdx] = useState(0)
   useEffect(() => {
     if (!active) return
@@ -67,48 +72,48 @@ export default function ScanActivity({ discovering = false, fullJob = null }: { 
     return () => clearInterval(t)
   }, [active])
 
-  // live find-feed: append new symbols as they appear in the pool
-  const [feed, setFeed] = useState<{ sym: string; text: string }[]>([])
+  // live find-feed with REAL factors for each scored stock
+  const [feed, setFeed] = useState<Feed[]>([])
   const seenRef = useRef<Set<string>>(new Set())
   const tick = stats.live_tick
   useEffect(() => {
     if (!active) return
-    const fresh: { sym: string; text: string }[] = []
+    const fresh: Feed[] = []
     for (const r of pool as Row[]) {
       if (seenRef.current.has(r.symbol)) continue
       seenRef.current.add(r.symbol)
       const res = researchOf(r)
-      const grade = res?.grade ? `Grade ${res.grade}` : `score ${Math.round(Number((r.metrics || {}).buy_score ?? r.score ?? 0))}`
-      const tag = (res?.tags || [])[0]
-      fresh.push({ sym: r.symbol, text: `${displayName(r) || r.symbol} · ${grade}${tag ? ' · ' + tag.toLowerCase() : ''}` })
+      const { facs, hit, total } = factorsOf(r)
+      fresh.push({
+        sym: r.symbol,
+        name: displayName(r) || r.symbol,
+        grade: res?.grade ? `Grade ${res.grade}` : `score ${Math.round(Number((r.metrics || {}).buy_score ?? r.score ?? 0))}`,
+        facs, hit, total,
+      })
     }
-    if (fresh.length) setFeed((f) => [...fresh.reverse(), ...f].slice(0, 8))
+    if (fresh.length) setFeed((f) => [...fresh.reverse(), ...f].slice(0, 6))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick, active, pool.length])
 
-  // reset feed seen-set when a brand new scan kicks off
   useEffect(() => {
     if (discovering || fullActive) { seenRef.current = new Set(); setFeed([]) }
   }, [discovering, fullActive])
 
   if (!active && feed.length === 0) return null
 
-  const phaseText = fullActive
-    ? `Exhaustive scan — ${PHASES[phaseIdx]}`
-    : discovering
-      ? `Discovering — ${PHASES[phaseIdx]}`
-      : active
-        ? PHASES[phaseIdx]
-        : 'Scan complete'
+  const phaseText = fullActive ? `Exhaustive scan — ${PHASES[phaseIdx]}`
+    : discovering ? `Discovering — ${PHASES[phaseIdx]}`
+    : active ? PHASES[phaseIdx] : 'Scan complete'
+
+  // factors currently being checked = factors of the most recent scored stock (real labels)
+  const checking = feed[0]?.facs || []
 
   return (
     <section className={'scan-activity' + (active ? ' is-active' : ' is-done')}>
       <div className="scan-activity__top">
         <span className="scan-dot" />
         <span className="scan-phase">{active ? phaseText : 'Latest scan complete — results below'}</span>
-        <span className="scan-batch">
-          {fullActive ? `${pct}%` : batchTotal > 0 ? `batch ${batch}/${batchTotal}` : active ? 'starting…' : ''}
-        </span>
+        <span className="scan-batch">{fullActive ? `${pct}%` : batchTotal > 0 ? `batch ${batch}/${batchTotal}` : active ? 'starting…' : ''}</span>
       </div>
 
       <div className="scan-bar"><div className="scan-bar__fill" style={{ width: pct + '%' }}><span className="scan-bar__shimmer" /></div></div>
@@ -120,13 +125,36 @@ export default function ScanActivity({ discovering = false, fullJob = null }: { 
         <div className="scan-chip accent"><b>★ {strong}</b><span>fundamentally strong</span></div>
       </div>
 
+      {analyzing.length > 0 && (
+        <div className="scan-now">
+          <span className="scan-now__label">Analyzing now</span>
+          <div className="scan-now__chips">
+            {analyzing.slice(0, 14).map((s) => <span key={s} className="scan-now__chip">{s}</span>)}
+          </div>
+        </div>
+      )}
+
+      {checking.length > 0 && (
+        <div className="scan-checking">
+          <span className="scan-checking__label">Checking factors</span>
+          <div className="scan-checking__pills">
+            {checking.map((c, i) => <span key={i} className="scan-fac">✓ {c}</span>)}
+          </div>
+        </div>
+      )}
+
       {feed.length > 0 && (
         <div className="scan-feed">
           {feed.map((f, i) => (
             <div key={f.sym + i} className={'scan-feed__row' + (i === 0 ? ' fresh' : '')}>
               <span className="scan-feed__arrow">▲</span>
               <span className="scan-feed__sym">{f.sym}</span>
-              <span className="scan-feed__txt">{f.text}</span>
+              <span className="scan-feed__grade">{f.grade}</span>
+              {f.hit != null && f.total != null && <span className="scan-feed__count">{f.hit}/{f.total} factors</span>}
+              <div className="scan-feed__facs">
+                {f.facs.slice(0, 4).map((c, j) => <span key={j} className="scan-fac sm">{c}</span>)}
+                {f.facs.length > 4 && <span className="scan-fac sm more">+{f.facs.length - 4}</span>}
+              </div>
             </div>
           ))}
         </div>

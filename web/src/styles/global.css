@@ -789,3 +789,18 @@ button.tiny,.bell-btn,.search,.search__go,.search-menu__item,.modal-close,.facto
 .scan-feed__sym{font-weight:800;min-width:96px;}
 .scan-feed__txt{color:var(--muted,#8a7f76);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 @media (max-width:720px){.scan-chip{flex:1;min-width:0;}}
+
+/* ===== Scan internals: analyzing-now + factors being checked ===== */
+.scan-now{margin-top:11px;display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;}
+.scan-now__label,.scan-checking__label{font-size:10px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--muted,#8a7f76);padding-top:3px;white-space:nowrap;}
+.scan-now__chips{display:flex;flex-wrap:wrap;gap:5px;}
+.scan-now__chip{font-size:11px;font-weight:700;color:var(--text,#3a322c);background:rgba(210,103,74,.10);border:1px solid rgba(210,103,74,.22);border-radius:6px;padding:2px 7px;animation:scanslide .4s ease;}
+.scan-checking{margin-top:9px;display:flex;align-items:flex-start;gap:9px;flex-wrap:wrap;}
+.scan-checking__pills{display:flex;flex-wrap:wrap;gap:5px;}
+.scan-fac{font-size:10.5px;font-weight:600;color:#15803d;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.20);border-radius:999px;padding:2px 8px;animation:scanslide .4s ease;}
+.scan-fac.sm{font-size:10px;padding:1px 6px;color:var(--muted,#6b7280);background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06);font-weight:600;}
+.scan-fac.sm.more{color:var(--accent,#d2674a);}
+.scan-feed__row{flex-wrap:wrap;}
+.scan-feed__grade{font-size:11px;font-weight:700;color:#15803d;}
+.scan-feed__count{font-size:11px;color:var(--muted,#8a7f76);}
+.scan-feed__facs{display:flex;flex-wrap:wrap;gap:4px;width:100%;padding-left:19px;margin-top:1px;}
