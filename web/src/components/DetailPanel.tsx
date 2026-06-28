@@ -91,7 +91,20 @@ export default function DetailPanel() {
           <span className="fs fail">{failed.length} failed</span>
         </div>
 
-        {passed.length > 0 && (
+        {/* Use rich reasons/criteria from backend (our fundamental + catalyst work) for user-friendly view.
+            Falls back to old passed factors if not present. Prioritizes plain reasons over jargon. */}
+        { (row.why_good_reasons && row.why_good_reasons.length > 0) ? (
+          <>
+            <p className="section-label">Key reasons why interesting</p>
+            <div className="factor-chips">
+              {row.why_good_reasons.slice(0, 6).map((r: any, i: number) => (
+                <span key={i} className="chip-pass" title={r.evidence || r.text}>
+                  {r.text || r}
+                </span>
+              ))}
+            </div>
+          </>
+        ) : passed.length > 0 && (
           <>
             <p className="section-label">Top passed checks</p>
             <div className="factor-chips">

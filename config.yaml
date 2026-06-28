@@ -38,8 +38,9 @@ scanner:
   # Symbols per batch for yfinance (avoid rate limits). For more aggressive live coverage raise batch carefully + add delay.
   batch_size: 22
   batch_delay_sec: 0.35
-  # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50)
-  hot_score_threshold: 25
+  # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50).
+  # Raised to avoid polluting with low-conviction 'weak setup' names (addresses user feedback on low scores at top).
+  hot_score_threshold: 30
 
   # --- Snapshot write-gating (DB-bloat control) ---
   # Only persist a scan_snapshots row when a symbol is meaningful, instead of every
