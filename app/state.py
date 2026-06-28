@@ -107,6 +107,8 @@ class AppState:
                 "summary": _res.get("summary"),
                 "archetype": _res.get("archetype"),
                 "profile": _prof_compact,
+                "headline": _res.get("headline"),
+                "why_shown": _res.get("why_shown"),
             }
         else:
             research = None

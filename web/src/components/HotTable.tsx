@@ -33,9 +33,11 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   // This makes the constantly-visible table actually useful to end users.
   const richReasons = ((row as any).why_good_reasons || (m as any).reasons || (row as any).criteria || []).slice(0, 2)
   const qtag = (row.research?.tags || [])[0]
-  const reason = richReasons.length > 0
-    ? richReasons.map((r: any) => (typeof r === 'string' ? r : r.text || r)).join(' • ')
-    : (m.smart_money?.primary_alert || qtag || (row.alerts || [])[0] || m.sector || '—')
+  const headline = row.research?.headline
+  const reason = headline
+    || (richReasons.length > 0
+        ? richReasons.map((r: any) => (typeof r === 'string' ? r : r.text || r)).join(' • ')
+        : (m.smart_money?.primary_alert || qtag || (row.alerts || [])[0] || m.sector || '—'))
   const vd = verdict(row)
 
   const watch = (e: React.MouseEvent) => { e.stopPropagation(); addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }

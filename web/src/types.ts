@@ -88,6 +88,8 @@ export interface Research {
   summary?: string
   archetype?: string
   profile?: StockProfile
+  headline?: string
+  why_shown?: string
 }
 
 export interface Row {

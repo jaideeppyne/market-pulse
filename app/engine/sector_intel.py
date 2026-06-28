@@ -74,6 +74,7 @@ def _slim_pick(row: dict[str, Any]) -> dict[str, Any]:
         "archetype": res.get("archetype"),
         "fundamentally_strong": res.get("fundamentally_strong"),
         "tags": (res.get("tags") or [])[:2],
+        "headline": res.get("headline"),
     }
 
 

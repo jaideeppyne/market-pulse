@@ -96,6 +96,8 @@ export default function DetailPanel() {
         {/* Primary value: graded multi-reason research card (grade + grouped reasons + tags) */}
         {research && (research.groups?.length || research.tags?.length) ? (
           <div className="research-card">
+            {research.headline && <div className="research-headline" title="What's special about this company">★ {research.headline}</div>}
+            {research.why_shown && <div className="research-why">{research.why_shown}</div>}
             <div className="research-head">
               <GradeBadge row={row} showTag={false} />
               <span className="research-head__txt">

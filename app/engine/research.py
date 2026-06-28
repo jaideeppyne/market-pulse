@@ -179,6 +179,36 @@ def build_research(row: dict[str, Any]) -> dict[str, Any]:
     except Exception:
         profile = None
 
+    # 7) "Why it's here" — a specific, non-obvious one-liner for EVERY company.
+    headline = None
+    if profile and profile.get("special"):
+        headline = profile["special"]
+    else:
+        _leader = seed.get("leader")
+        if _leader:
+            _extra = None
+            for _k, _txt in (("fii", "strong FII backing"), ("orders", "big recent order wins"),
+                             ("fcf", "strong free cash flow"), ("div", "consistent dividends"),
+                             ("promoter", "high promoter skin-in-the-game"), ("low_debt", "a clean balance sheet")):
+                if seed.get(_k):
+                    _extra = _txt
+                    break
+            headline = f"Market leader in {_leader}" + (f" with {_extra}" if _extra else "")
+        elif tags:
+            headline = tags[0]
+        elif groups and groups[0]["reasons"]:
+            headline = groups[0]["reasons"][0]
+
+    # 8) plain rationale for WHY this name is being surfaced
+    _gtitles = [g["title"] for g in groups[:2] if g.get("reasons")]
+    why_shown = (
+        f"Shown as Grade {grade}"
+        + (" — fundamentally strong" if fundamentally_strong else "")
+        + (f", {total_reasons} quality signals" if total_reasons else "")
+        + (f" across {', '.join(_gtitles)}" if _gtitles else "")
+        + "."
+    )
+
     return {
         "grade": grade,
         "quality_score": quality_score,
@@ -189,4 +219,6 @@ def build_research(row: dict[str, Any]) -> dict[str, Any]:
         "summary": summary,
         "archetype": archetype,
         "profile": profile,
+        "headline": headline,
+        "why_shown": why_shown,
     }

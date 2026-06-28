@@ -19,6 +19,7 @@ function PickCard({ row }: { row: Row }) {
   const reasons = flatReasons(row, 3)
   const tags = (res?.tags || []).slice(0, 3)
   const archetype = res?.archetype
+  const headline = res?.headline
   const watch = (res?.profile?.watch || [])[0]
   const buy = Math.round(rankScore(row))
 
@@ -36,6 +37,7 @@ function PickCard({ row }: { row: Row }) {
         {m.price != null ? <span className="pick-card__price">{cur}{m.price}</span> : <span className="pick-card__pending">live price pending</span>}
         <span className={'pick-card__day ' + dayCls}>{day > 0 ? '+' : ''}{day}%</span>
       </div>
+      {headline && <div className="pick-card__headline" title="Why this is on the board">{headline}</div>}
       {tags.length > 0 && (
         <div className="pick-card__tags">
           {tags.map((t, i) => <span key={i} className="pick-tag">{t}</span>)}

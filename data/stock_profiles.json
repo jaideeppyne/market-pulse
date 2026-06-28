@@ -1,47 +1,604 @@
 {
   "_doc": "Durable qualitative intelligence per symbol. No live numbers (so it never goes stale or misleads). Fields: biz, archetype, moat, watch[], valuation, peers[], ownership. Sector fallbacks live in code.",
-
-  "TCS.NS": {"biz": "India's largest IT services firm — builds and runs software/IT systems for global banks, retailers and manufacturers, paid in dollars.", "archetype": "Premium compounder", "moat": "Scale, deep client relationships and a huge trained workforce competitors can't quickly replicate.", "watch": ["Growth is tied to US/Europe IT budgets — a recession there slows deals", "AI could compress the headcount-led billing model over time", "Richly valued — leaves little room for disappointment"], "valuation": "Quality you pay up for — rarely cheap; buy on market-wide dips, not for a bargain.", "peers": ["Infosys", "HCL Tech", "Wipro", "Tech Mahindra"], "ownership": "Promoter: Tata Sons. Heavily owned by FIIs and domestic funds; consistent buyback + dividend record."},
-  "INFY.NS": {"biz": "No.2 Indian IT services exporter — digital, cloud and consulting work for global enterprises, billed mostly in dollars.", "archetype": "Premium compounder", "moat": "Brand, scale and long-standing Fortune-500 client roster.", "watch": ["Cyclical to global IT spending and US/Europe macro", "Frequent senior-management churn has rattled investors before", "AI-led productivity is a long-term threat to the billing model"], "valuation": "Premium but usually a touch cheaper than TCS — a relative-value play within large-cap IT.", "peers": ["TCS", "HCL Tech", "Wipro", "Tech Mahindra"], "ownership": "Professionally managed (no dominant promoter); high FII + mutual-fund ownership; strong buyback history."},
-  "HCLTECH.NS": {"biz": "Large IT services + products firm, strong in infrastructure management and engineering R&D services.", "archetype": "Compounder + dividend", "moat": "Differentiated infra/engineering mix and a generous, steady dividend.", "watch": ["Products & platforms business can be lumpy", "Same global-IT-budget and AI risks as peers"], "valuation": "Usually the cheapest of the big-4 IT — appeals to value + dividend seekers.", "peers": ["TCS", "Infosys", "Wipro", "Tech Mahindra"], "ownership": "Promoter: Roshni Nadar family; high institutional ownership."},
-  "WIPRO.NS": {"biz": "Global IT services firm; long turnaround story under newer leadership.", "archetype": "Turnaround", "moat": "Scale, though growth has lagged TCS/Infosys for years.", "watch": ["Has chronically grown slower than peers", "Leadership/strategy changes create uncertainty"], "valuation": "Cheaper for a reason — a bet on the turnaround actually delivering.", "peers": ["TCS", "Infosys", "HCL Tech"], "ownership": "Promoter: Azim Premji (among India's biggest philanthropists); large buybacks."},
-
-  "HINDUNILVR.NS": {"biz": "India's biggest consumer-goods company — soaps, shampoos, detergents, tea, foods used in most Indian households daily.", "archetype": "Defensive compounder", "moat": "Unmatched distribution reach (millions of outlets) and iconic brands.", "watch": ["Rural demand and raw-material (palm oil, crude) costs swing margins", "Premium valuation for low-double-digit growth", "Small local/D2C brands chipping at categories"], "valuation": "A 'sleep-well' defensive — almost never cheap; you pay for predictability.", "peers": ["Nestlé India", "ITC", "Dabur", "Britannia"], "ownership": "Promoter: Unilever (global FMCG giant); widely held by funds."},
-  "NESTLEIND.NS": {"biz": "Maker of Maggi, KitKat, Nescafé and infant nutrition — premium packaged foods.", "archetype": "Defensive compounder", "moat": "Powerhouse brands (Maggi is near-synonymous with instant noodles) and pricing power.", "watch": ["Heavy reliance on a few mega-brands (Maggi)", "Food-safety/regulatory headlines can hit hard (recall history)", "Expensive — priced for perfection"], "valuation": "Premium defensive; quality is not in doubt, the price usually is.", "peers": ["HUL", "Britannia", "Tata Consumer"], "ownership": "Promoter: Nestlé S.A.; high dividend payout."},
-  "BRITANNIA.NS": {"biz": "India's leading biscuits & bakery company (Good Day, Marie, bread, dairy).", "archetype": "Defensive compounder", "moat": "Dominant biscuit distribution and brand recall.", "watch": ["Wheat/milk/packaging cost inflation squeezes margins", "Intense competition in low-price biscuits"], "valuation": "Quality FMCG at a premium — steady rather than explosive.", "peers": ["Nestlé India", "HUL", "ITC"], "ownership": "Promoter: Wadia Group; strong dividend record."},
-  "ITC.NS": {"biz": "Cigarettes-led conglomerate that also sells foods (Aashirvaad, Sunfeast), hotels, paper and agri.", "archetype": "Dividend + value", "moat": "Cigarette cash-machine funds a growing FMCG arm; one of India's highest dividend yields.", "watch": ["Cigarette taxation/regulation is a permanent overhang", "ESG funds avoid tobacco exposure", "FMCG/hotels still lower-margin than cigarettes"], "valuation": "Cheaper than pure FMCG names + fat dividend — a value/income pick.", "peers": ["HUL", "Godfrey Phillips", "VST Industries"], "ownership": "No single promoter; large government-linked (LIC/SUUTI) and FII holding."},
-
-  "ASIANPAINT.NS": {"biz": "India's dominant decorative-paints company — the brand most people repaint their homes with.", "archetype": "Premium compounder", "moat": "Best-in-class dealer network and supply chain; decades of category leadership.", "watch": ["New deep-pocketed entrant (Grasim/Birla Opus) threatens the cosy market share", "Crude-linked input costs swing margins", "Premium valuation with slowing growth"], "valuation": "Historically a market darling — quality at a high price; the competitive threat is the new variable.", "peers": ["Berger Paints", "Kansai Nerolac", "Birla Opus (new)"], "ownership": "Promoter: founding families; high FII + fund ownership."},
-  "BERGEPAINT.NS": {"biz": "India's No.2 decorative-paints maker.", "archetype": "Compounder", "moat": "Strong No.2 distribution, but a clear step behind Asian Paints.", "watch": ["Same new-entrant and crude-cost risks as the sector", "Perpetual No.2 — less pricing power than the leader"], "valuation": "Premium like the sector; smaller and slightly cheaper than Asian Paints.", "peers": ["Asian Paints", "Kansai Nerolac"], "ownership": "Promoter: Dhingra family."},
-
-  "RELIANCE.NS": {"biz": "India's largest company — oil refining & petrochemicals, plus Jio (telecom) and Reliance Retail; building new energy.", "archetype": "Conglomerate / cyclical-to-growth", "moat": "Scale across energy, the largest telecom subscriber base (Jio) and the largest retailer.", "watch": ["Refining/petchem earnings swing with global crude and margins", "Heavy capex cycles and historically high debt phases", "Value depends on eventual Jio/Retail listings being unlocked"], "valuation": "Sum-of-parts story — consumer (Jio/Retail) growth vs cyclical energy base.", "peers": ["ONGC (energy)", "Bharti Airtel (telecom)", "DMart (retail)"], "ownership": "Promoter: Ambani family; the most widely held stock in India."},
-
-  "HDFCBANK.NS": {"biz": "India's largest private-sector bank — lends to retail and businesses, runs deposits and payments.", "archetype": "Compounder (re-rating pending)", "moat": "Best-in-class deposit franchise and credit underwriting; huge branch + digital reach.", "watch": ["Post-HDFC merger, deposit growth and margins are the swing factor", "A large bank can only grow so fast — law of large numbers", "Asset quality always worth watching in any downturn"], "valuation": "Rare phase of trading near long-term-average valuations — a watch for patient buyers.", "peers": ["ICICI Bank", "Kotak Bank", "Axis Bank", "SBI"], "ownership": "No single promoter; the most-owned bank by FIIs and domestic funds."},
-  "ICICIBANK.NS": {"biz": "Large private bank — retail + corporate lending, strong digital push.", "archetype": "Compounder", "moat": "Improved underwriting and tech have driven a multi-year re-rating.", "watch": ["Corporate-loan cycle quality", "Margins compress when rates fall"], "valuation": "Re-rated on execution — quality private bank, no longer cheap.", "peers": ["HDFC Bank", "Axis Bank", "Kotak Bank", "SBI"], "ownership": "No single promoter; high institutional ownership."},
-  "KOTAKBANK.NS": {"biz": "Conservative, high-quality private bank known for cautious lending.", "archetype": "Compounder", "moat": "Pristine asset quality and a strong liabilities franchise.", "watch": ["Founder/CEO transition (Uday Kotak stepped back) is a key uncertainty", "Conservatism can mean slower growth than peers"], "valuation": "Premium for quality; growth-vs-caution is the debate.", "peers": ["HDFC Bank", "ICICI Bank", "Axis Bank"], "ownership": "Promoter holding being reduced per RBI norms."},
-  "SBIN.NS": {"biz": "India's largest bank — government-owned; vast reach across the country.", "archetype": "Value / cyclical", "moat": "Unmatched scale, deposit base and government backing.", "watch": ["Public-sector bank — government can direct lending/priorities", "Asset quality more cyclical than top private banks"], "valuation": "Cheap vs private peers — a value play on India's credit cycle.", "peers": ["HDFC Bank", "ICICI Bank", "Bank of Baroda", "PNB"], "ownership": "Promoter: Government of India."},
-  "AXISBANK.NS": {"biz": "Large private bank — retail + corporate lending.", "archetype": "Compounder (improving)", "moat": "Rebuilt underwriting and retail franchise after past stumbles.", "watch": ["Patchier track record than HDFC/ICICI historically", "Integration of acquired businesses"], "valuation": "Often the cheapest of the big-4 private banks — relative-value pick.", "peers": ["HDFC Bank", "ICICI Bank", "Kotak Bank"], "ownership": "No single promoter; large LIC/institutional holding."},
-
-  "BAJFINANCE.NS": {"biz": "India's premier consumer-lending NBFC — finances phones, appliances, two-wheelers and personal loans at the point of sale.", "archetype": "High-growth compounder", "moat": "Massive customer database and underwriting/analytics edge; scale in consumer credit.", "watch": ["Highly sensitive to credit cycles — defaults rise in a slowdown", "Very high valuation prices in years of fast growth", "Rising regulation of unsecured/consumer lending"], "valuation": "Expensive growth — superb franchise, but the price assumes continued rapid compounding.", "peers": ["Bajaj Finserv", "Chola", "SBI Cards"], "ownership": "Promoter: Bajaj Group; heavy FII ownership."},
-  "BAJAJFINSV.NS": {"biz": "Holding company for Bajaj Finance plus insurance (life + general) joint ventures.", "archetype": "Compounder (holdco)", "moat": "Owns one of India's best lenders and growing insurance franchises.", "watch": ["Holdco discount — trades below sum of its parts", "Insurance + lending cycle exposure"], "valuation": "A way to own Bajaj Finance + insurance optionality, usually at a discount.", "peers": ["Bajaj Finance", "SBI Life", "HDFC Life"], "ownership": "Promoter: Bajaj Group."},
-
-  "MARUTI.NS": {"biz": "India's largest car maker — the everyday small/mid car brand for millions.", "archetype": "Cyclical leader", "moat": "Largest dealer + service network and brand trust in mass-market cars.", "watch": ["Auto sales are cyclical — tied to incomes, rates, fuel prices", "Late to EVs vs newer rivals", "Was slower in SUVs, the fastest-growing segment"], "valuation": "Quality cyclical — best bought when the auto cycle is down, not peaking.", "peers": ["Tata Motors", "Mahindra & Mahindra", "Hyundai"], "ownership": "Promoter: Suzuki (Japan)."},
-  "EICHERMOT.NS": {"biz": "Maker of Royal Enfield motorcycles — the dominant mid-size (350cc+) bike brand.", "archetype": "Cyclical compounder", "moat": "Cult brand and pricing power in premium motorcycles.", "watch": ["Discretionary purchase — sensitive to consumer sentiment", "New premium-bike competition (Triumph, Harley tie-ups)", "Export/commercial-vehicle JV exposure"], "valuation": "Premium brand at a premium price — buy on demand dips.", "peers": ["Bajaj Auto", "Hero MotoCorp", "TVS Motor"], "ownership": "Promoter: Lal family."},
-
-  "SUNPHARMA.NS": {"biz": "India's largest pharma company — generics + a growing global specialty (branded) drug business.", "archetype": "Compounder", "moat": "Scale in generics plus a higher-margin specialty pipeline (e.g., dermatology).", "watch": ["US FDA plant inspections can hit specific facilities/revenues", "US generic pricing is competitive and deflationary", "Specialty R&D bets are long-dated"], "valuation": "Re-rated on specialty success — quality pharma, fairly to richly valued.", "peers": ["Dr Reddy's", "Cipla", "Lupin"], "ownership": "Promoter: Dilip Shanghvi family."},
-  "TITAN.NS": {"biz": "Tata's lifestyle company — dominant in branded jewellery (Tanishq) plus watches and eyewear.", "archetype": "Premium consumer compounder", "moat": "Trust in jewellery (purity, design) where most of the market is still unbranded — a long runway to take share.", "watch": ["Gold-price volatility affects demand and margins", "Discretionary big-ticket spend — slows in downturns", "Premium valuation"], "valuation": "A consumption compounder you pay up for; the formalisation of jewellery is the long story.", "peers": ["Kalyan Jewellers", "Senco Gold"], "ownership": "Promoter: Tata Group."},
-  "LT.NS": {"biz": "India's largest engineering & construction firm — builds infrastructure, plus a large IT-services arm (LTIMindtree/LTTS).", "archetype": "Cyclical-to-structural (capex play)", "moat": "Unmatched execution scale on complex projects; proxy for India's infrastructure capex.", "watch": ["Order inflow and execution pace drive earnings — lumpy", "Working-capital heavy business", "Government/Middle-East order dependence"], "valuation": "The cleanest large-cap bet on India's capex cycle; IT subsidiaries add value.", "peers": ["Siemens", "ABB", "BHEL"], "ownership": "No single promoter; large LIC/institutional holding."},
-  "ULTRACEMCO.NS": {"biz": "India's largest cement producer — an Aditya Birla company.", "archetype": "Cyclical leader", "moat": "Biggest capacity and pan-India footprint — a consolidation winner.", "watch": ["Cement demand/prices are cyclical and regional", "Energy (coal/pet-coke) costs swing margins", "Capacity additions can pressure prices"], "valuation": "Quality cyclical — best in an up-cycle for construction/housing.", "peers": ["Shree Cement", "Ambuja", "ACC"], "ownership": "Promoter: Aditya Birla Group."},
-  "PIDILITIND.NS": {"biz": "Maker of Fevicol and adhesives — near-monopoly in Indian glues/sealants.", "archetype": "Defensive compounder", "moat": "Fevicol is synonymous with adhesive — extraordinary brand pricing power.", "watch": ["Crude-derivative (VAM) input-cost swings", "Premium valuation for a mid-teens grower"], "valuation": "A 'monopoly' compounder you rarely get cheap.", "peers": ["Asian Paints (allied)", "Berger"], "ownership": "Promoter: Parekh family."},
-  "DMART.NS": {"biz": "Avenue Supermarts — runs DMart, India's most profitable value grocery/retail chain.", "archetype": "High-growth compounder", "moat": "Relentless low-cost operations and owned-store model deliver industry-best margins.", "watch": ["Online/quick-commerce (Blinkit, Zepto) threatens the store model", "Very high valuation prices in years of store expansion", "Slower store rollout than the market wants"], "valuation": "Premium retailer — superb operator, expensive stock.", "peers": ["Reliance Retail", "Trent (Zudio)"], "ownership": "Promoter: Radhakishan Damani (legendary investor)."},
-  "TRENT.NS": {"biz": "Tata retailer behind Westside and the fast-growing value-fashion chain Zudio.", "archetype": "High-growth compounder", "moat": "Zudio's fast, affordable fashion is scaling explosively.", "watch": ["Very richly valued after a huge run", "Fashion retail is competitive and trend-sensitive"], "valuation": "Priced for rapid growth — a momentum favourite, low margin of safety.", "peers": ["DMart", "Aditya Birla Fashion"], "ownership": "Promoter: Tata Group."},
-
-  "BEL.NS": {"biz": "Bharat Electronics — defence-PSU making radars, electronics and systems for India's military.", "archetype": "Defence/PSU growth", "moat": "Preferred indigenous supplier riding India's defence-localisation (Atmanirbhar) push.", "watch": ["Revenue depends on government defence orders and budgets", "PSU — government can influence pricing/dividends", "Re-rated a lot; execution must keep up"], "valuation": "Structural defence-capex story; PSU re-rating means it's no longer cheap.", "peers": ["HAL", "BDL", "Mazagon Dock"], "ownership": "Promoter: Government of India; strong dividend payer."},
-  "HAL.NS": {"biz": "Hindustan Aeronautics — defence PSU making and servicing military aircraft (Tejas, helicopters).", "archetype": "Defence/PSU growth", "moat": "Monopoly position in India's military aircraft manufacturing & maintenance.", "watch": ["Lumpy, large government order cycles", "Execution/delivery delays have history", "PSU policy risk"], "valuation": "A core defence-indigenisation play; re-rated strongly.", "peers": ["BEL", "BDL", "Mazagon Dock"], "ownership": "Promoter: Government of India."},
-  "COALINDIA.NS": {"biz": "World's largest coal miner — supplies most of India's thermal-power coal. State-owned.", "archetype": "Deep-value dividend", "moat": "Near-monopoly on domestic coal; gushing cash flows.", "watch": ["Long-term energy-transition (away from coal) overhang", "Government can mandate dividends/pricing", "ESG funds avoid it"], "valuation": "Very cheap with a high dividend yield — classic value/income, with a structural cloud.", "peers": ["NTPC (customer)", "NMDC"], "ownership": "Promoter: Government of India; among the highest dividend yields in the index."},
-  "NTPC.NS": {"biz": "India's largest power generator — mostly thermal, expanding into renewables. State-owned.", "archetype": "Regulated dividend compounder", "moat": "Regulated, largely assured returns on a vast generation base.", "watch": ["Coal-heavy in an energy transition", "Capex execution on the renewables pivot", "PSU policy risk"], "valuation": "Steady regulated earnings + dividend + green optionality — a defensive utility re-rating.", "peers": ["Power Grid", "Tata Power", "Adani Power"], "ownership": "Promoter: Government of India."},
-
-  "DABUR.NS": {"biz": "Ayurveda-led FMCG — Dabur honey, Chyawanprash, Real juices, oral & hair care.", "archetype": "Defensive compounder", "moat": "Trusted natural/Ayurvedic brands with deep rural reach.", "watch": ["Rural-demand dependent", "Input-cost inflation", "Premium valuation for steady growth"], "valuation": "Defensive FMCG at a premium.", "peers": ["HUL", "Marico", "Emami"], "ownership": "Promoter: Burman family."},
-  "MARICO.NS": {"biz": "FMCG maker of Parachute (coconut oil), Saffola (edible oil/oats) and hair care.", "archetype": "Defensive compounder", "moat": "Category leadership in coconut & value-added hair oils.", "watch": ["Copra/edible-oil price swings hit margins", "Concentration in a few key brands"], "valuation": "Steady defensive FMCG; premium but smaller than HUL.", "peers": ["HUL", "Dabur", "Emami"], "ownership": "Promoter: Harsh Mariwala family."},
-  "TATACONSUM.NS": {"biz": "Tata's FMCG arm — tea (Tata Tea), salt, coffee, water and growing packaged foods.", "archetype": "Compounder (re-rating)", "moat": "Strong staples brands + Tata distribution; consumer reinvention story.", "watch": ["Tea/coffee commodity price swings", "Integration of acquisitions", "Premium valuation"], "valuation": "A Tata consumer re-rating story — quality at a premium.", "peers": ["HUL", "Nestlé India", "Britannia"], "ownership": "Promoter: Tata Group."}
+  "TCS.NS": {
+    "biz": "India's largest IT services firm — builds and runs software/IT systems for global banks, retailers and manufacturers, paid in dollars.",
+    "archetype": "Premium compounder",
+    "moat": "Scale, deep client relationships and a huge trained workforce competitors can't quickly replicate.",
+    "watch": [
+      "Growth is tied to US/Europe IT budgets — a recession there slows deals",
+      "AI could compress the headcount-led billing model over time",
+      "Richly valued — leaves little room for disappointment"
+    ],
+    "valuation": "Quality you pay up for — rarely cheap; buy on market-wide dips, not for a bargain.",
+    "peers": [
+      "Infosys",
+      "HCL Tech",
+      "Wipro",
+      "Tech Mahindra"
+    ],
+    "ownership": "Promoter: Tata Sons. Heavily owned by FIIs and domestic funds; consistent buyback + dividend record.",
+    "special": "India's most valuable IT firm — a cash machine that returns nearly all profit via dividends + buybacks."
+  },
+  "INFY.NS": {
+    "biz": "No.2 Indian IT services exporter — digital, cloud and consulting work for global enterprises, billed mostly in dollars.",
+    "archetype": "Premium compounder",
+    "moat": "Brand, scale and long-standing Fortune-500 client roster.",
+    "watch": [
+      "Cyclical to global IT spending and US/Europe macro",
+      "Frequent senior-management churn has rattled investors before",
+      "AI-led productivity is a long-term threat to the billing model"
+    ],
+    "valuation": "Premium but usually a touch cheaper than TCS — a relative-value play within large-cap IT.",
+    "peers": [
+      "TCS",
+      "HCL Tech",
+      "Wipro",
+      "Tech Mahindra"
+    ],
+    "ownership": "Professionally managed (no dominant promoter); high FII + mutual-fund ownership; strong buyback history.",
+    "special": "The bellwether of Indian IT — when Infosys cuts guidance, the whole sector moves with it."
+  },
+  "HCLTECH.NS": {
+    "biz": "Large IT services + products firm, strong in infrastructure management and engineering R&D services.",
+    "archetype": "Compounder + dividend",
+    "moat": "Differentiated infra/engineering mix and a generous, steady dividend.",
+    "watch": [
+      "Products & platforms business can be lumpy",
+      "Same global-IT-budget and AI risks as peers"
+    ],
+    "valuation": "Usually the cheapest of the big-4 IT — appeals to value + dividend seekers.",
+    "peers": [
+      "TCS",
+      "Infosys",
+      "Wipro",
+      "Tech Mahindra"
+    ],
+    "ownership": "Promoter: Roshni Nadar family; high institutional ownership.",
+    "special": "The dividend king of big IT — highest payout, with a differentiated infra/engineering niche."
+  },
+  "WIPRO.NS": {
+    "biz": "Global IT services firm; long turnaround story under newer leadership.",
+    "archetype": "Turnaround",
+    "moat": "Scale, though growth has lagged TCS/Infosys for years.",
+    "watch": [
+      "Has chronically grown slower than peers",
+      "Leadership/strategy changes create uncertainty"
+    ],
+    "valuation": "Cheaper for a reason — a bet on the turnaround actually delivering.",
+    "peers": [
+      "TCS",
+      "Infosys",
+      "HCL Tech"
+    ],
+    "ownership": "Promoter: Azim Premji (among India's biggest philanthropists); large buybacks.",
+    "special": "The perennial turnaround — cheapest of the big-4 IT, a bet on a long-awaited revival."
+  },
+  "HINDUNILVR.NS": {
+    "biz": "India's biggest consumer-goods company — soaps, shampoos, detergents, tea, foods used in most Indian households daily.",
+    "archetype": "Defensive compounder",
+    "moat": "Unmatched distribution reach (millions of outlets) and iconic brands.",
+    "watch": [
+      "Rural demand and raw-material (palm oil, crude) costs swing margins",
+      "Premium valuation for low-double-digit growth",
+      "Small local/D2C brands chipping at categories"
+    ],
+    "valuation": "A 'sleep-well' defensive — almost never cheap; you pay for predictability.",
+    "peers": [
+      "Nestlé India",
+      "ITC",
+      "Dabur",
+      "Britannia"
+    ],
+    "ownership": "Promoter: Unilever (global FMCG giant); widely held by funds.",
+    "special": "Reaches ~9 of 10 Indian households — the deepest distribution moat in consumer goods."
+  },
+  "NESTLEIND.NS": {
+    "biz": "Maker of Maggi, KitKat, Nescafé and infant nutrition — premium packaged foods.",
+    "archetype": "Defensive compounder",
+    "moat": "Powerhouse brands (Maggi is near-synonymous with instant noodles) and pricing power.",
+    "watch": [
+      "Heavy reliance on a few mega-brands (Maggi)",
+      "Food-safety/regulatory headlines can hit hard (recall history)",
+      "Expensive — priced for perfection"
+    ],
+    "valuation": "Premium defensive; quality is not in doubt, the price usually is.",
+    "peers": [
+      "HUL",
+      "Britannia",
+      "Tata Consumer"
+    ],
+    "ownership": "Promoter: Nestlé S.A.; high dividend payout.",
+    "special": "Maggi alone is a near-monopoly — extraordinary pricing power in packaged food."
+  },
+  "BRITANNIA.NS": {
+    "biz": "India's leading biscuits & bakery company (Good Day, Marie, bread, dairy).",
+    "archetype": "Defensive compounder",
+    "moat": "Dominant biscuit distribution and brand recall.",
+    "watch": [
+      "Wheat/milk/packaging cost inflation squeezes margins",
+      "Intense competition in low-price biscuits"
+    ],
+    "valuation": "Quality FMCG at a premium — steady rather than explosive.",
+    "peers": [
+      "Nestlé India",
+      "HUL",
+      "ITC"
+    ],
+    "ownership": "Promoter: Wadia Group; strong dividend record.",
+    "special": "Owns the Indian biscuit aisle — Good Day and Marie are default-choice brands."
+  },
+  "ITC.NS": {
+    "biz": "Cigarettes-led conglomerate that also sells foods (Aashirvaad, Sunfeast), hotels, paper and agri.",
+    "archetype": "Dividend + value",
+    "moat": "Cigarette cash-machine funds a growing FMCG arm; one of India's highest dividend yields.",
+    "watch": [
+      "Cigarette taxation/regulation is a permanent overhang",
+      "ESG funds avoid tobacco exposure",
+      "FMCG/hotels still lower-margin than cigarettes"
+    ],
+    "valuation": "Cheaper than pure FMCG names + fat dividend — a value/income pick.",
+    "peers": [
+      "HUL",
+      "Godfrey Phillips",
+      "VST Industries"
+    ],
+    "ownership": "No single promoter; large government-linked (LIC/SUUTI) and FII holding.",
+    "special": "A cigarette cash-machine quietly funding one of India's fastest-growing FMCG arms — with a fat dividend."
+  },
+  "ASIANPAINT.NS": {
+    "biz": "India's dominant decorative-paints company — the brand most people repaint their homes with.",
+    "archetype": "Premium compounder",
+    "moat": "Best-in-class dealer network and supply chain; decades of category leadership.",
+    "watch": [
+      "New deep-pocketed entrant (Grasim/Birla Opus) threatens the cosy market share",
+      "Crude-linked input costs swing margins",
+      "Premium valuation with slowing growth"
+    ],
+    "valuation": "Historically a market darling — quality at a high price; the competitive threat is the new variable.",
+    "peers": [
+      "Berger Paints",
+      "Kansai Nerolac",
+      "Birla Opus (new)"
+    ],
+    "ownership": "Promoter: founding families; high FII + fund ownership.",
+    "special": "~50%+ of decorative paints — a dealer network rivals spent decades failing to crack (Birla's now trying)."
+  },
+  "BERGEPAINT.NS": {
+    "biz": "India's No.2 decorative-paints maker.",
+    "archetype": "Compounder",
+    "moat": "Strong No.2 distribution, but a clear step behind Asian Paints.",
+    "watch": [
+      "Same new-entrant and crude-cost risks as the sector",
+      "Perpetual No.2 — less pricing power than the leader"
+    ],
+    "valuation": "Premium like the sector; smaller and slightly cheaper than Asian Paints.",
+    "peers": [
+      "Asian Paints",
+      "Kansai Nerolac"
+    ],
+    "ownership": "Promoter: Dhingra family.",
+    "special": "The solid No.2 in paints — rides the same housing demand as the leader, at a lower price."
+  },
+  "RELIANCE.NS": {
+    "biz": "India's largest company — oil refining & petrochemicals, plus Jio (telecom) and Reliance Retail; building new energy.",
+    "archetype": "Conglomerate / cyclical-to-growth",
+    "moat": "Scale across energy, the largest telecom subscriber base (Jio) and the largest retailer.",
+    "watch": [
+      "Refining/petchem earnings swing with global crude and margins",
+      "Heavy capex cycles and historically high debt phases",
+      "Value depends on eventual Jio/Retail listings being unlocked"
+    ],
+    "valuation": "Sum-of-parts story — consumer (Jio/Retail) growth vs cyclical energy base.",
+    "peers": [
+      "ONGC (energy)",
+      "Bharti Airtel (telecom)",
+      "DMart (retail)"
+    ],
+    "ownership": "Promoter: Ambani family; the most widely held stock in India.",
+    "special": "India's biggest company and most widely-held stock — owns the largest telecom (Jio) and retailer."
+  },
+  "HDFCBANK.NS": {
+    "biz": "India's largest private-sector bank — lends to retail and businesses, runs deposits and payments.",
+    "archetype": "Compounder (re-rating pending)",
+    "moat": "Best-in-class deposit franchise and credit underwriting; huge branch + digital reach.",
+    "watch": [
+      "Post-HDFC merger, deposit growth and margins are the swing factor",
+      "A large bank can only grow so fast — law of large numbers",
+      "Asset quality always worth watching in any downturn"
+    ],
+    "valuation": "Rare phase of trading near long-term-average valuations — a watch for patient buyers.",
+    "peers": [
+      "ICICI Bank",
+      "Kotak Bank",
+      "Axis Bank",
+      "SBI"
+    ],
+    "ownership": "No single promoter; the most-owned bank by FIIs and domestic funds.",
+    "special": "India's gold-standard private bank — and at a rare, reasonable valuation after the HDFC merger."
+  },
+  "ICICIBANK.NS": {
+    "biz": "Large private bank — retail + corporate lending, strong digital push.",
+    "archetype": "Compounder",
+    "moat": "Improved underwriting and tech have driven a multi-year re-rating.",
+    "watch": [
+      "Corporate-loan cycle quality",
+      "Margins compress when rates fall"
+    ],
+    "valuation": "Re-rated on execution — quality private bank, no longer cheap.",
+    "peers": [
+      "HDFC Bank",
+      "Axis Bank",
+      "Kotak Bank",
+      "SBI"
+    ],
+    "ownership": "No single promoter; high institutional ownership.",
+    "special": "The comeback story of Indian banking — cleaned up and re-rated on near-flawless execution."
+  },
+  "KOTAKBANK.NS": {
+    "biz": "Conservative, high-quality private bank known for cautious lending.",
+    "archetype": "Compounder",
+    "moat": "Pristine asset quality and a strong liabilities franchise.",
+    "watch": [
+      "Founder/CEO transition (Uday Kotak stepped back) is a key uncertainty",
+      "Conservatism can mean slower growth than peers"
+    ],
+    "valuation": "Premium for quality; growth-vs-caution is the debate.",
+    "peers": [
+      "HDFC Bank",
+      "ICICI Bank",
+      "Axis Bank"
+    ],
+    "ownership": "Promoter holding being reduced per RBI norms.",
+    "special": "The most conservatively-run big bank — pristine loan book, now navigating life after its founder-CEO."
+  },
+  "SBIN.NS": {
+    "biz": "India's largest bank — government-owned; vast reach across the country.",
+    "archetype": "Value / cyclical",
+    "moat": "Unmatched scale, deposit base and government backing.",
+    "watch": [
+      "Public-sector bank — government can direct lending/priorities",
+      "Asset quality more cyclical than top private banks"
+    ],
+    "valuation": "Cheap vs private peers — a value play on India's credit cycle.",
+    "peers": [
+      "HDFC Bank",
+      "ICICI Bank",
+      "Bank of Baroda",
+      "PNB"
+    ],
+    "ownership": "Promoter: Government of India.",
+    "special": "India's banking giant at a fraction of private-bank valuations — the value play on the credit cycle."
+  },
+  "AXISBANK.NS": {
+    "biz": "Large private bank — retail + corporate lending.",
+    "archetype": "Compounder (improving)",
+    "moat": "Rebuilt underwriting and retail franchise after past stumbles.",
+    "watch": [
+      "Patchier track record than HDFC/ICICI historically",
+      "Integration of acquired businesses"
+    ],
+    "valuation": "Often the cheapest of the big-4 private banks — relative-value pick.",
+    "peers": [
+      "HDFC Bank",
+      "ICICI Bank",
+      "Kotak Bank"
+    ],
+    "ownership": "No single promoter; large LIC/institutional holding.",
+    "special": "Often the cheapest big private bank — a re-rating candidate if execution holds up."
+  },
+  "BAJFINANCE.NS": {
+    "biz": "India's premier consumer-lending NBFC — finances phones, appliances, two-wheelers and personal loans at the point of sale.",
+    "archetype": "High-growth compounder",
+    "moat": "Massive customer database and underwriting/analytics edge; scale in consumer credit.",
+    "watch": [
+      "Highly sensitive to credit cycles — defaults rise in a slowdown",
+      "Very high valuation prices in years of fast growth",
+      "Rising regulation of unsecured/consumer lending"
+    ],
+    "valuation": "Expensive growth — superb franchise, but the price assumes continued rapid compounding.",
+    "peers": [
+      "Bajaj Finserv",
+      "Chola",
+      "SBI Cards"
+    ],
+    "ownership": "Promoter: Bajaj Group; heavy FII ownership.",
+    "special": "India's consumer-lending machine — finances purchases at the checkout for tens of millions."
+  },
+  "BAJAJFINSV.NS": {
+    "biz": "Holding company for Bajaj Finance plus insurance (life + general) joint ventures.",
+    "archetype": "Compounder (holdco)",
+    "moat": "Owns one of India's best lenders and growing insurance franchises.",
+    "watch": [
+      "Holdco discount — trades below sum of its parts",
+      "Insurance + lending cycle exposure"
+    ],
+    "valuation": "A way to own Bajaj Finance + insurance optionality, usually at a discount.",
+    "peers": [
+      "Bajaj Finance",
+      "SBI Life",
+      "HDFC Life"
+    ],
+    "ownership": "Promoter: Bajaj Group.",
+    "special": "Owns Bajaj Finance plus fast-growing insurance — usually available at a holdco discount."
+  },
+  "MARUTI.NS": {
+    "biz": "India's largest car maker — the everyday small/mid car brand for millions.",
+    "archetype": "Cyclical leader",
+    "moat": "Largest dealer + service network and brand trust in mass-market cars.",
+    "watch": [
+      "Auto sales are cyclical — tied to incomes, rates, fuel prices",
+      "Late to EVs vs newer rivals",
+      "Was slower in SUVs, the fastest-growing segment"
+    ],
+    "valuation": "Quality cyclical — best bought when the auto cycle is down, not peaking.",
+    "peers": [
+      "Tata Motors",
+      "Mahindra & Mahindra",
+      "Hyundai"
+    ],
+    "ownership": "Promoter: Suzuki (Japan).",
+    "special": "Roughly every second car sold in India is a Maruti — unmatched service network and resale trust."
+  },
+  "EICHERMOT.NS": {
+    "biz": "Maker of Royal Enfield motorcycles — the dominant mid-size (350cc+) bike brand.",
+    "archetype": "Cyclical compounder",
+    "moat": "Cult brand and pricing power in premium motorcycles.",
+    "watch": [
+      "Discretionary purchase — sensitive to consumer sentiment",
+      "New premium-bike competition (Triumph, Harley tie-ups)",
+      "Export/commercial-vehicle JV exposure"
+    ],
+    "valuation": "Premium brand at a premium price — buy on demand dips.",
+    "peers": [
+      "Bajaj Auto",
+      "Hero MotoCorp",
+      "TVS Motor"
+    ],
+    "ownership": "Promoter: Lal family.",
+    "special": "Royal Enfield is a cult brand — near-monopoly pricing power in mid-size motorcycles."
+  },
+  "SUNPHARMA.NS": {
+    "biz": "India's largest pharma company — generics + a growing global specialty (branded) drug business.",
+    "archetype": "Compounder",
+    "moat": "Scale in generics plus a higher-margin specialty pipeline (e.g., dermatology).",
+    "watch": [
+      "US FDA plant inspections can hit specific facilities/revenues",
+      "US generic pricing is competitive and deflationary",
+      "Specialty R&D bets are long-dated"
+    ],
+    "valuation": "Re-rated on specialty success — quality pharma, fairly to richly valued.",
+    "peers": [
+      "Dr Reddy's",
+      "Cipla",
+      "Lupin"
+    ],
+    "ownership": "Promoter: Dilip Shanghvi family.",
+    "special": "India's pharma No.1, moving up the value chain into high-margin specialty drugs."
+  },
+  "TITAN.NS": {
+    "biz": "Tata's lifestyle company — dominant in branded jewellery (Tanishq) plus watches and eyewear.",
+    "archetype": "Premium consumer compounder",
+    "moat": "Trust in jewellery (purity, design) where most of the market is still unbranded — a long runway to take share.",
+    "watch": [
+      "Gold-price volatility affects demand and margins",
+      "Discretionary big-ticket spend — slows in downturns",
+      "Premium valuation"
+    ],
+    "valuation": "A consumption compounder you pay up for; the formalisation of jewellery is the long story.",
+    "peers": [
+      "Kalyan Jewellers",
+      "Senco Gold"
+    ],
+    "ownership": "Promoter: Tata Group.",
+    "special": "Tanishq is formalising India's huge unbranded jewellery market — a multi-decade runway."
+  },
+  "LT.NS": {
+    "biz": "India's largest engineering & construction firm — builds infrastructure, plus a large IT-services arm (LTIMindtree/LTTS).",
+    "archetype": "Cyclical-to-structural (capex play)",
+    "moat": "Unmatched execution scale on complex projects; proxy for India's infrastructure capex.",
+    "watch": [
+      "Order inflow and execution pace drive earnings — lumpy",
+      "Working-capital heavy business",
+      "Government/Middle-East order dependence"
+    ],
+    "valuation": "The cleanest large-cap bet on India's capex cycle; IT subsidiaries add value.",
+    "peers": [
+      "Siemens",
+      "ABB",
+      "BHEL"
+    ],
+    "ownership": "No single promoter; large LIC/institutional holding.",
+    "special": "The cleanest proxy for India's infrastructure capex — it builds what the country is betting on."
+  },
+  "ULTRACEMCO.NS": {
+    "biz": "India's largest cement producer — an Aditya Birla company.",
+    "archetype": "Cyclical leader",
+    "moat": "Biggest capacity and pan-India footprint — a consolidation winner.",
+    "watch": [
+      "Cement demand/prices are cyclical and regional",
+      "Energy (coal/pet-coke) costs swing margins",
+      "Capacity additions can pressure prices"
+    ],
+    "valuation": "Quality cyclical — best in an up-cycle for construction/housing.",
+    "peers": [
+      "Shree Cement",
+      "Ambuja",
+      "ACC"
+    ],
+    "ownership": "Promoter: Aditya Birla Group.",
+    "special": "India's biggest cement maker — the consolidation winner as the industry concentrates."
+  },
+  "PIDILITIND.NS": {
+    "biz": "Maker of Fevicol and adhesives — near-monopoly in Indian glues/sealants.",
+    "archetype": "Defensive compounder",
+    "moat": "Fevicol is synonymous with adhesive — extraordinary brand pricing power.",
+    "watch": [
+      "Crude-derivative (VAM) input-cost swings",
+      "Premium valuation for a mid-teens grower"
+    ],
+    "valuation": "A 'monopoly' compounder you rarely get cheap.",
+    "peers": [
+      "Asian Paints (allied)",
+      "Berger"
+    ],
+    "ownership": "Promoter: Parekh family.",
+    "special": "Fevicol IS glue in India — a brand so dominant it's a verb, with rare pricing power."
+  },
+  "DMART.NS": {
+    "biz": "Avenue Supermarts — runs DMart, India's most profitable value grocery/retail chain.",
+    "archetype": "High-growth compounder",
+    "moat": "Relentless low-cost operations and owned-store model deliver industry-best margins.",
+    "watch": [
+      "Online/quick-commerce (Blinkit, Zepto) threatens the store model",
+      "Very high valuation prices in years of store expansion",
+      "Slower store rollout than the market wants"
+    ],
+    "valuation": "Premium retailer — superb operator, expensive stock.",
+    "peers": [
+      "Reliance Retail",
+      "Trent (Zudio)"
+    ],
+    "ownership": "Promoter: Radhakishan Damani (legendary investor).",
+    "special": "India's most profitable grocer — a ruthless low-cost, owned-store model rivals can't match."
+  },
+  "TRENT.NS": {
+    "biz": "Tata retailer behind Westside and the fast-growing value-fashion chain Zudio.",
+    "archetype": "High-growth compounder",
+    "moat": "Zudio's fast, affordable fashion is scaling explosively.",
+    "watch": [
+      "Very richly valued after a huge run",
+      "Fashion retail is competitive and trend-sensitive"
+    ],
+    "valuation": "Priced for rapid growth — a momentum favourite, low margin of safety.",
+    "peers": [
+      "DMart",
+      "Aditya Birla Fashion"
+    ],
+    "ownership": "Promoter: Tata Group.",
+    "special": "Zudio is scaling fast-fashion explosively — one of the market's favourite growth stories."
+  },
+  "BEL.NS": {
+    "biz": "Bharat Electronics — defence-PSU making radars, electronics and systems for India's military.",
+    "archetype": "Defence/PSU growth",
+    "moat": "Preferred indigenous supplier riding India's defence-localisation (Atmanirbhar) push.",
+    "watch": [
+      "Revenue depends on government defence orders and budgets",
+      "PSU — government can influence pricing/dividends",
+      "Re-rated a lot; execution must keep up"
+    ],
+    "valuation": "Structural defence-capex story; PSU re-rating means it's no longer cheap.",
+    "peers": [
+      "HAL",
+      "BDL",
+      "Mazagon Dock"
+    ],
+    "ownership": "Promoter: Government of India; strong dividend payer.",
+    "special": "The preferred indigenous supplier for India's defence-electronics push — a Make-in-India winner."
+  },
+  "HAL.NS": {
+    "biz": "Hindustan Aeronautics — defence PSU making and servicing military aircraft (Tejas, helicopters).",
+    "archetype": "Defence/PSU growth",
+    "moat": "Monopoly position in India's military aircraft manufacturing & maintenance.",
+    "watch": [
+      "Lumpy, large government order cycles",
+      "Execution/delivery delays have history",
+      "PSU policy risk"
+    ],
+    "valuation": "A core defence-indigenisation play; re-rated strongly.",
+    "peers": [
+      "BEL",
+      "BDL",
+      "Mazagon Dock"
+    ],
+    "ownership": "Promoter: Government of India.",
+    "special": "Near-monopoly on India's military aircraft — it builds and services the air force's fleet."
+  },
+  "COALINDIA.NS": {
+    "biz": "World's largest coal miner — supplies most of India's thermal-power coal. State-owned.",
+    "archetype": "Deep-value dividend",
+    "moat": "Near-monopoly on domestic coal; gushing cash flows.",
+    "watch": [
+      "Long-term energy-transition (away from coal) overhang",
+      "Government can mandate dividends/pricing",
+      "ESG funds avoid it"
+    ],
+    "valuation": "Very cheap with a high dividend yield — classic value/income, with a structural cloud.",
+    "peers": [
+      "NTPC (customer)",
+      "NMDC"
+    ],
+    "ownership": "Promoter: Government of India; among the highest dividend yields in the index.",
+    "special": "Mines most of India's coal and gushes cash — among the highest dividend yields in the index."
+  },
+  "NTPC.NS": {
+    "biz": "India's largest power generator — mostly thermal, expanding into renewables. State-owned.",
+    "archetype": "Regulated dividend compounder",
+    "moat": "Regulated, largely assured returns on a vast generation base.",
+    "watch": [
+      "Coal-heavy in an energy transition",
+      "Capex execution on the renewables pivot",
+      "PSU policy risk"
+    ],
+    "valuation": "Steady regulated earnings + dividend + green optionality — a defensive utility re-rating.",
+    "peers": [
+      "Power Grid",
+      "Tata Power",
+      "Adani Power"
+    ],
+    "ownership": "Promoter: Government of India.",
+    "special": "India's largest power producer — regulated, steady returns plus a growing renewables pivot."
+  },
+  "DABUR.NS": {
+    "biz": "Ayurveda-led FMCG — Dabur honey, Chyawanprash, Real juices, oral & hair care.",
+    "archetype": "Defensive compounder",
+    "moat": "Trusted natural/Ayurvedic brands with deep rural reach.",
+    "watch": [
+      "Rural-demand dependent",
+      "Input-cost inflation",
+      "Premium valuation for steady growth"
+    ],
+    "valuation": "Defensive FMCG at a premium.",
+    "peers": [
+      "HUL",
+      "Marico",
+      "Emami"
+    ],
+    "ownership": "Promoter: Burman family.",
+    "special": "The Ayurveda FMCG leader — trusted natural brands with deep rural reach."
+  },
+  "MARICO.NS": {
+    "biz": "FMCG maker of Parachute (coconut oil), Saffola (edible oil/oats) and hair care.",
+    "archetype": "Defensive compounder",
+    "moat": "Category leadership in coconut & value-added hair oils.",
+    "watch": [
+      "Copra/edible-oil price swings hit margins",
+      "Concentration in a few key brands"
+    ],
+    "valuation": "Steady defensive FMCG; premium but smaller than HUL.",
+    "peers": [
+      "HUL",
+      "Dabur",
+      "Emami"
+    ],
+    "ownership": "Promoter: Harsh Mariwala family.",
+    "special": "Owns coconut oil (Parachute) and value-added hair oils — leadership in everyday staples."
+  },
+  "TATACONSUM.NS": {
+    "biz": "Tata's FMCG arm — tea (Tata Tea), salt, coffee, water and growing packaged foods.",
+    "archetype": "Compounder (re-rating)",
+    "moat": "Strong staples brands + Tata distribution; consumer reinvention story.",
+    "watch": [
+      "Tea/coffee commodity price swings",
+      "Integration of acquisitions",
+      "Premium valuation"
+    ],
+    "valuation": "A Tata consumer re-rating story — quality at a premium.",
+    "peers": [
+      "HUL",
+      "Nestlé India",
+      "Britannia"
+    ],
+    "ownership": "Promoter: Tata Group.",
+    "special": "Tata's consumer reinvention — staples brands (tea, salt) plus a fast-growing foods push."
+  }
 }

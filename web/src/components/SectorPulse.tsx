@@ -5,7 +5,7 @@ import { setSectorFilter, selectSymbol } from '../store/uiSlice'
 type Pick = {
   symbol: string; name?: string; market?: string; grade?: string; archetype?: string
   buy_score?: number; quality_score?: number; day_chg_pct?: number; price?: number
-  fundamentally_strong?: boolean; tags?: string[]
+  fundamentally_strong?: boolean; tags?: string[]; headline?: string
 }
 type Sector = {
   sector?: string; cycle?: string; cycle_label?: string; rotation?: string
@@ -39,7 +39,7 @@ function PickRow({ p }: { p: Pick }) {
     <button className="spx-pick" title={`Open ${p.symbol}`} onClick={(e) => { e.stopPropagation(); dispatch(selectSymbol(p.symbol)) }}>
       {p.grade && <span className={'spx-grade ' + gradeClass(p.grade)}>{p.grade}</span>}
       <span className="spx-pick__name">{p.name || p.symbol}</span>
-      {p.archetype && <span className="spx-pick__arch">{p.archetype}</span>}
+      {(p.headline || p.archetype) && <span className="spx-pick__arch" title={p.headline || p.archetype}>{p.headline || p.archetype}</span>}
       <span className="spx-pick__spacer" />
       {p.buy_score != null && <span className="spx-pick__score" title="Buy score">{Math.round(p.buy_score)}</span>}
       {p.price != null ? <span className={'spx-pick__day ' + (day >= 0 ? 'pos' : 'neg')}>{day > 0 ? '+' : ''}{day}%</span> : <span className="spx-pick__pending">px pending</span>}
