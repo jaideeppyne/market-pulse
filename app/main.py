@@ -477,13 +477,9 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
 async def _analyze_impl(symbol: str, refresh: bool = False):
     from datetime import datetime, timezone
 
-<<<<<<< HEAD
-    _enforce_rate_limit(request, "analyze")
-=======
     raw_in = str(symbol or "").strip()
     if not raw_in or len(raw_in) > 48 or not _ANALYZE_INPUT_RE.match(raw_in):
         return {"error": "invalid ticker", "symbol": raw_in[:48]}
->>>>>>> 3d337aeee5718adb89ca67740ef238aa8b583853
 
     resolved_symbol = resolve_analyze_symbol(symbol)
     raw = resolved_symbol.raw
@@ -515,7 +511,6 @@ async def _analyze_impl(symbol: str, refresh: bool = False):
     market = resolved_symbol.market
     norm_sym = resolved_symbol.normalized
 
-<<<<<<< HEAD
     # Reuse the exact same batch fetcher the live scanner uses. Candidates are
     # evaluated in priority order so plain US tickers do not get misrouted to
     # India. The common case is a single candidate (no extra overhead); when
@@ -553,7 +548,8 @@ async def _analyze_impl(symbol: str, refresh: bool = False):
         hist, info, calendar = hit
     except Exception as e:
         logger.exception("Ad-hoc yf fetch failed for %s", raw)
-=======
+        return {"error": f"fetch failed: {e}", "symbol": raw}
+
     if not refresh:
         now = datetime.now(timezone.utc)
         for sym in candidates:
@@ -605,7 +601,6 @@ async def _analyze_impl(symbol: str, refresh: bool = False):
             payload["cache_provider_status"] = (cached or {}).get("provider_status")
             return payload
         logger.exception("Ad-hoc provider fetch failed for %s", raw)
->>>>>>> 3d337aeee5718adb89ca67740ef238aa8b583853
         return {"error": safe_error_detail("fetch failed", e), "symbol": raw}
 
     # Gather best available news context (from the live broad crawlers including Google News)
@@ -685,11 +680,8 @@ async def _analyze_impl(symbol: str, refresh: bool = False):
         "thesis": (sig.metrics or {}).get("thesis"),
         "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()] if len(hist) > 0 else [],
         "ad_hoc": True,
-<<<<<<< HEAD
         "identity_verified": _is_known_symbol(norm_sym, us_universe, india_universe, uk_universe) or _has_symbol_identity(norm_sym, info or {}),
-=======
         "provider_status": provider_status,
->>>>>>> 3d337aeee5718adb89ca67740ef238aa8b583853
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
     }
 
