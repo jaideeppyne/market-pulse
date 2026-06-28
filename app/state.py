@@ -117,10 +117,16 @@ class AppState:
         all_us.sort(key=self._buy_rank, reverse=True)
         all_india.sort(key=self._buy_rank, reverse=True)
         all_uk.sort(key=self._buy_rank, reverse=True)
+        # Apply a reasonable floor for market tabs too (prevents low-conviction 'weak setup' stocks from polluting the list).
+        # Keeps India tab useful without showing nonsense low-edge names. Global hot is stricter.
+        tab_threshold = max(threshold * 0.6, 15)
+        all_us = [x for x in all_us if self._buy_rank(x) >= tab_threshold]
+        all_india = [x for x in all_india if self._buy_rank(x) >= tab_threshold]
+        all_uk = [x for x in all_uk if self._buy_rank(x) >= tab_threshold]
         self.hot_by_market = {
-            "us": all_us[:50],   # top 50 US by current score for the US tab
-            "india": all_india[:50],  # top 50 India by current score for the India tab
-            "uk": all_uk[:50],   # top 50 UK by current score for the UK tab
+            "us": all_us[:50],
+            "india": all_india[:50],
+            "uk": all_uk[:50],
         }
         self.sectors = build_sector_summary(
             self.symbols, hot_threshold=threshold

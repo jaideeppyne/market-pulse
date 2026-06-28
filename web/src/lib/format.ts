@@ -144,7 +144,8 @@ export function verdict(row: Partial<Row> = {}): Verdict {
   if (buy >= 70) return { text: 'Strong buy rank — clearing on entry timing', tone: 'good' }
   if (smart) return { text: 'Smart-money interest — watch for confirmation', tone: 'watch' }
   if (buy >= 45) return { text: 'Developing setup — keep on the radar', tone: 'watch' }
-  return { text: 'Weak setup — little edge right now', tone: 'neutral' }
+  if (buy >= 20) return { text: 'Speculative mover — limited edge, watch closely', tone: 'neutral' }
+  return { text: 'Low conviction — not a strong setup yet', tone: 'neutral' }
 }
 
 export function topReasons(row: Partial<Row> = {}, n = 3): { reasons: FactorBreakdownItem[]; risk: FactorBreakdownItem | null } {
