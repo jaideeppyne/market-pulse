@@ -1,9 +1,11 @@
+import { useEffect, useRef, useState } from 'react'
 import StatCards from '../components/StatCards'
 import TopPicks from '../components/TopPicks'
+import ScanActivity from '../components/ScanActivity'
 import HotTable from '../components/HotTable'
 import IntelFeed from '../components/IntelFeed'
 import DetailPanel from '../components/DetailPanel'
-import { useLazyDiscoverQuery, useStartFullScanMutation } from '../store/api'
+import { useLazyDiscoverQuery, useStartFullScanMutation, useLazyJobStatusQuery } from '../store/api'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import {
   setMarketFilter, toggleEarly, toggleWhale, toggleQuality, setSortBy, selectSymbol, setSearch,
@@ -42,6 +44,32 @@ export default function CommandCenter() {
   })
   const [triggerDiscover, discoverState] = useLazyDiscoverQuery()
   const [startFullScan, fullScanState] = useStartFullScanMutation()
+  const [pollJob] = useLazyJobStatusQuery()
+  const [fullJob, setFullJob] = useState<{ id?: string; status: string; progress: number } | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const runFullScan = async () => {
+    try {
+      const res: any = await startFullScan().unwrap()
+      const id = res?.job_id || res?.id
+      if (!id) return
+      setFullJob({ id, status: 'running', progress: 5 })
+      if (pollRef.current) clearInterval(pollRef.current)
+      pollRef.current = setInterval(async () => {
+        try {
+          const j: any = await pollJob(id).unwrap()
+          const status = String(j?.status || 'running')
+          const progress = Number(j?.progress || 0)
+          setFullJob({ id, status, progress })
+          if (status === 'done' || status === 'error') {
+            if (pollRef.current) clearInterval(pollRef.current)
+            setTimeout(() => setFullJob(null), 4000)
+          }
+        } catch { /* keep polling */ }
+      }, 2500)
+    } catch { /* ignore */ }
+  }
+  useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current) }, [])
 
   const onAnalyze = () => {
     const sym = (ui.search || '').trim().toUpperCase()
@@ -77,8 +105,8 @@ export default function CommandCenter() {
             <button className="btn-secondary small" onClick={() => triggerDiscover()} disabled={discoverState.isFetching} title="Aggressive multi-website discovery scan">
               {discoverState.isFetching ? '🔍 Discovering…' : '🔍 Scan More'}
             </button>
-            <button className="btn-secondary small accent-violet" onClick={() => startFullScan()} disabled={fullScanState.isLoading} title="Exhaustive full scan across all listed stocks">
-              {fullScanState.isLoading ? '🔬 Starting…' : '🔬 Full Exhaustive Scan'}
+            <button className="btn-secondary small accent-violet" onClick={() => runFullScan()} disabled={fullScanState.isLoading || fullJob?.status === 'running'} title="Exhaustive full scan across all listed stocks">
+              {fullJob?.status === 'running' ? `🔬 Scanning… ${fullJob.progress}%` : fullScanState.isLoading ? '🔬 Starting…' : '🔬 Full Exhaustive Scan'}
             </button>
             <span className="toolbar__spacer" />
             <select value={ui.sortBy} onChange={(e) => dispatch(setSortBy(e.target.value as SortBy))} aria-label="Sort by" title="Sort the Hot Movers table">
@@ -86,6 +114,8 @@ export default function CommandCenter() {
             </select>
             <button className="btn-ghost small" onClick={onCsv} title="Export current hot list as CSV">CSV</button>
           </div>
+
+          <ScanActivity discovering={discoverState.isFetching} fullJob={fullJob} />
 
           <section className="panel table-panel">
             <div className="panel__head">
