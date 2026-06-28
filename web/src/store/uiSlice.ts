@@ -6,6 +6,7 @@ const initialState: UiState = {
   marketFilter: 'all',   // all | us | india | uk
   earlyOnly: false,
   whaleOnly: false,
+  qualityOnly: false,
   sectorFilter: null,
   sortBy: 'score',       // score | quality | factors | day | rvol
   search: '',
@@ -22,6 +23,7 @@ const uiSlice = createSlice({
     setMarketFilter: (s, a: PayloadAction<MarketFilter>) => { s.marketFilter = a.payload },
     toggleEarly: (s) => { s.earlyOnly = !s.earlyOnly },
     toggleWhale: (s) => { s.whaleOnly = !s.whaleOnly },
+    toggleQuality: (s) => { s.qualityOnly = !s.qualityOnly },
     setSectorFilter: (s, a: PayloadAction<string | null>) => { s.sectorFilter = a.payload },
     setSortBy: (s, a: PayloadAction<SortBy>) => { s.sortBy = a.payload },
     setSearch: (s, a: PayloadAction<string>) => { s.search = a.payload },
@@ -30,7 +32,7 @@ const uiSlice = createSlice({
     closeFactors: (s) => { s.factorSymbol = null },
     setFactorFilter: (s, a: PayloadAction<FactorFilter>) => { s.factorFilter = a.payload },
     resetFilters: (s) => {
-      s.marketFilter = 'all'; s.earlyOnly = false; s.whaleOnly = false
+      s.marketFilter = 'all'; s.earlyOnly = false; s.whaleOnly = false; s.qualityOnly = false
       s.sectorFilter = null; s.search = ''
     },
     toast: (s, a: PayloadAction<unknown>) => { s.toast = a.payload },
@@ -38,7 +40,7 @@ const uiSlice = createSlice({
 })
 
 export const {
-  setMarketFilter, toggleEarly, toggleWhale, setSectorFilter, setSortBy,
+  setMarketFilter, toggleEarly, toggleWhale, toggleQuality, setSectorFilter, setSortBy,
   setSearch, selectSymbol, openFactors, closeFactors, setFactorFilter,
   resetFilters, toast,
 } = uiSlice.actions

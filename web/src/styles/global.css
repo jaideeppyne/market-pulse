@@ -712,3 +712,24 @@ button.tiny,.bell-btn,.search,.search__go,.search-menu__item,.modal-close,.facto
   .modal{padding:10px;}
   .modal-panel{max-height:94vh;}
 }
+
+/* ===== Fundamental research: grade badges, tags, why-it's-good card ===== */
+.grade-wrap{display:inline-flex;align-items:center;gap:4px;margin:0 2px;vertical-align:middle;}
+.grade-badge{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:18px;padding:0 5px;border-radius:6px;font-size:11px;font-weight:800;letter-spacing:.3px;line-height:1;color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.12);}
+.grade--aplus{background:linear-gradient(135deg,#16a34a,#22c55e);}
+.grade--a{background:linear-gradient(135deg,#15803d,#16a34a);}
+.grade--b{background:linear-gradient(135deg,#0e7490,#0891b2);}
+.grade--c{background:linear-gradient(135deg,#b45309,#d97706);}
+.grade--d{background:linear-gradient(135deg,#9ca3af,#6b7280);}
+.grade-star{color:#f59e0b;font-size:12px;line-height:1;}
+.grade-tag{font-size:10.5px;color:var(--muted,#8a7f76);background:rgba(0,0,0,.04);border-radius:5px;padding:1px 5px;white-space:nowrap;}
+.filter-chip[data-quality="1"]{background:linear-gradient(135deg,#16a34a,#22c55e);color:#fff;border-color:transparent;}
+.research-card{margin:14px 0 6px;padding:13px 14px;border:1px solid var(--border,#ecdfd6);border-radius:14px;background:linear-gradient(180deg,rgba(34,197,94,.06),rgba(34,197,94,.015));}
+.research-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.research-head__txt{font-size:12.5px;font-weight:700;color:var(--text,#3a322c);}
+.research-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;}
+.research-tag{font-size:11px;font-weight:600;color:#15803d;background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.25);border-radius:999px;padding:3px 9px;}
+.research-groups{display:flex;flex-direction:column;gap:9px;}
+.research-group__title{font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--accent,#d2674a);margin-bottom:3px;}
+.research-group__list{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:2px;}
+.research-group__list li{font-size:13px;line-height:1.5;color:var(--text,#3a322c);}

@@ -82,6 +82,14 @@ class AppState:
             m.pop(key, None)
         buy_score = row.get("buy_score", m.get("buy_score", row.get("score")))
         quality_score = row.get("quality_score", m.get("quality_score"))
+        _res = row.get("research") or {}
+        research = {
+            "grade": _res.get("grade"),
+            "quality_score": _res.get("quality_score"),
+            "fundamentally_strong": _res.get("fundamentally_strong"),
+            "tags": (_res.get("tags") or [])[:3],
+            "reason_count": _res.get("reason_count"),
+        } if _res else None
         return {
             "symbol": row.get("symbol"),
             "market": row.get("market"),
@@ -94,6 +102,7 @@ class AppState:
             "metrics": m,
             "sparkline": row.get("sparkline"),
             "top_factors": (m.get("top_weighted_factors") or [])[:10],
+            "research": research,
         }
 
     def _rebuild_hot_lists(self) -> None:

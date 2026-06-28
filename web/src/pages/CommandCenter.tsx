@@ -5,13 +5,13 @@ import DetailPanel from '../components/DetailPanel'
 import { useLazyDiscoverQuery, useStartFullScanMutation } from '../store/api'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import {
-  setMarketFilter, toggleEarly, toggleWhale, setSortBy, selectSymbol, setSearch,
+  setMarketFilter, toggleEarly, toggleWhale, toggleQuality, setSortBy, selectSymbol, setSearch,
 } from '../store/uiSlice'
-import { getHotPool, filterAndSort, DISPLAY_LIMIT, rankScore, hasSmartMoney } from '../lib/format'
+import { getHotPool, filterAndSort, DISPLAY_LIMIT, rankScore, hasSmartMoney, isFundamentallyStrong } from '../lib/format'
 import type { MarketFilter, Row, SortBy } from '../types'
 
 const SORTS = [
-  ['score', 'Buy score'], ['quality', 'Quality score'], ['factors', 'Factors hit'],
+  ['score', 'Buy score'], ['grade', 'Quality grade'], ['quality', 'Quality score'], ['factors', 'Factors hit'],
   ['day', 'Day %'], ['rvol', 'Volume'],
 ]
 
@@ -53,6 +53,7 @@ export default function CommandCenter() {
   const pool = getHotPool(data || {}, ui.marketFilter)
   const highConv = pool.filter((r) => rankScore(r) >= 70).length
   const smartMoney = pool.filter(hasSmartMoney).length
+  const strongCount = pool.filter(isFundamentallyStrong).length
   const quickAnalyze = (sym: string) => {
     dispatch(setSearch(sym))
     dispatch(selectSymbol(sym))
@@ -105,6 +106,7 @@ export default function CommandCenter() {
               <div className="panel__filters">
                 <button className="chip filter-chip" data-early={ui.earlyOnly ? '1' : '0'} title="Hide extended names — show only early/base entries" aria-pressed={ui.earlyOnly} onClick={() => dispatch(toggleEarly())}>Early buys only</button>
                 <button className="chip filter-chip" data-whale={ui.whaleOnly ? '1' : '0'} title="Show only stocks with a named whale / politician / smart-money buy" aria-pressed={ui.whaleOnly} onClick={() => dispatch(toggleWhale())}>Whale / Politician</button>
+                <button className="chip filter-chip" data-quality={ui.qualityOnly ? '1' : '0'} title="Show only fundamentally strong NSE/BSE names — good promoters, cash flow, valuations, FII backing, dividends" aria-pressed={ui.qualityOnly} onClick={() => dispatch(toggleQuality())}>★ Fundamentally strong{strongCount ? ` (${strongCount})` : ''}</button>
               </div>
             </div>
             <p className="panel-hint">Live ranking — click any score or row for the full 100+ factor checklist. Scan More runs aggressive multi-site discovery.</p>

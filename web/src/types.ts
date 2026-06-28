@@ -1,7 +1,7 @@
 export type Market = 'us' | 'india' | 'uk'
 export type MarketFilter = Market | 'all'
 export type FactorFilter = 'all' | 'pass' | 'fail' | 'risk'
-export type SortBy = 'score' | 'quality' | 'factors' | 'day' | 'rvol'
+export type SortBy = 'score' | 'quality' | 'grade' | 'factors' | 'day' | 'rvol'
 
 export interface FactorBreakdownItem {
   id?: string
@@ -62,8 +62,24 @@ export interface Metrics {
   [key: string]: unknown
 }
 
+export interface ResearchGroup {
+  title: string
+  reasons: string[]
+}
+
+export interface Research {
+  grade?: string
+  quality_score?: number
+  fundamentally_strong?: boolean
+  tags?: string[]
+  reason_count?: number
+  groups?: ResearchGroup[]
+  summary?: string
+}
+
 export interface Row {
   symbol: string
+  research?: Research
   market?: Market | string
   score?: number
   buy_score?: number
@@ -199,6 +215,7 @@ export interface UiState {
   marketFilter: MarketFilter
   earlyOnly: boolean
   whaleOnly: boolean
+  qualityOnly: boolean
   sectorFilter: string | null
   sortBy: SortBy
   search: string

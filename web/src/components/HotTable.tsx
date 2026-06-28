@@ -6,6 +6,7 @@ import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
 import MarketBadge from './ui/MarketBadge'
 import BuyScorePill from './ui/BuyScorePill'
+import GradeBadge from './ui/GradeBadge'
 import CatalystBadges from './ui/CatalystBadges'
 import type { Row } from '../types'
 
@@ -31,9 +32,10 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   // Prefer rich reasons/criteria from backend for valuable insights (fundamentals, catalysts) instead of generic sector or single alert.
   // This makes the constantly-visible table actually useful to end users.
   const richReasons = (row.why_good_reasons || m.reasons || row.criteria || []).slice(0, 2)
-  const reason = richReasons.length > 0 
+  const qtag = (row.research?.tags || [])[0]
+  const reason = richReasons.length > 0
     ? richReasons.map((r: any) => (typeof r === 'string' ? r : r.text || r)).join(' • ')
-    : (m.smart_money?.primary_alert || (row.alerts || [])[0] || m.sector || '—')
+    : (m.smart_money?.primary_alert || qtag || (row.alerts || [])[0] || m.sector || '—')
   const vd = verdict(row)
 
   const watch = (e: React.MouseEvent) => { e.stopPropagation(); addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }
@@ -53,6 +55,7 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
           <button className="tiny" title="One-click paper buy" onClick={paper}>📁</button>
           <span className="sym-main">
             <span className="sym__ticker" title={`${sym}${nm ? ' — ' + nm : ''}`}>{sym}</span>
+            <GradeBadge row={row} />
             {m.price != null && <span className={'sym__price ' + dayCls} title="Last traded price">{cur}{m.price}</span>}
             <br /><span className="sym__name" title={nm}>{nm}</span>
           </span>

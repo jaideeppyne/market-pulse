@@ -61,6 +61,7 @@ from app.workers.scanner_loop import ScannerLoop
 from app.crawler.price_crawler import _fetch_batch_with_status
 from app import company_names
 from app.engine.signals import analyze_symbol
+from app.engine.research import build_research
 
 logging.basicConfig(
     level=logging.INFO,
@@ -687,6 +688,10 @@ async def _analyze_impl(symbol: str, refresh: bool = False):
 
     try:
         payload["metrics"]["provider_status"] = provider_status
+        try:
+            payload["research"] = build_research(payload)
+        except Exception:
+            logger.debug("build_research failed for %s", norm_sym, exc_info=True)
         await upsert_symbol_analysis_cache(f"{market}:{norm_sym}", market, payload, provider_status=provider_status)
         if upper != norm_sym:
             await upsert_symbol_analysis_cache(f"{market}:{upper}", market, payload, provider_status=provider_status)

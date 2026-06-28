@@ -81,12 +81,24 @@ export function getHotPool(data: { hot?: Row[]; hot_by_market?: Partial<Record<M
   return deduped
 }
 
+export function researchOf(row: Row) {
+  return (row.research || (row.metrics as any)?.research) as import('../types').Research | undefined
+}
+export function isFundamentallyStrong(row: Row) {
+  return !!researchOf(row)?.fundamentally_strong
+}
+const GRADE_RANK: Record<string, number> = { 'A+': 6, 'A': 5, 'B': 4, 'C': 3, 'D': 2 }
+export function gradeRank(row: Row) {
+  return GRADE_RANK[String(researchOf(row)?.grade || '')] ?? 0
+}
+
 export function filterAndSort(rows: Row[] = [], ui: Partial<UiState> = {}) {
   const q = String(ui.search || '').trim().toUpperCase()
   const filtered = rows.filter((row) => {
     const m = row.metrics || {}
     if (ui.earlyOnly && m.is_extended) return false
     if (ui.whaleOnly && !hasSmartMoney(row)) return false
+    if (ui.qualityOnly && !isFundamentallyStrong(row)) return false
     if (ui.sectorFilter && m.sector !== ui.sectorFilter) return false
     if (q && rows.length > 1) {
       const hay = `${row.symbol || ''} ${m.name || ''} ${m.sector || ''}`.toUpperCase()
@@ -98,6 +110,7 @@ export function filterAndSort(rows: Row[] = [], ui: Partial<UiState> = {}) {
   const value = (row: Row) => {
     const m = row.metrics || {}
     if (sortBy === 'quality') return qualityScore(row)
+    if (sortBy === 'grade') return gradeRank(row) * 1000 + rankScore(row)
     if (sortBy === 'factors') return factorsDisplay(row).hit
     if (sortBy === 'day') return Number(m.day_chg_pct ?? (row as any).day_chg_pct ?? 0)
     if (sortBy === 'rvol') return Number(m.rvol ?? m.relative_volume ?? 0)

@@ -1,11 +1,12 @@
 import { useAnalyzeQuery, useAddWatchMutation, useAddPositionMutation } from '../store/api'
 import { openFactors, selectSymbol } from '../store/uiSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
-import { confTier, marketOf, factorsDisplay, displayName, companyName, whaleView, CURRENCY } from '../lib/format'
+import { confTier, marketOf, factorsDisplay, displayName, companyName, whaleView, CURRENCY, researchOf } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
 import BuyScorePill from './ui/BuyScorePill'
 import MarketBadge from './ui/MarketBadge'
+import GradeBadge from './ui/GradeBadge'
 
 export default function DetailPanel() {
   const dispatch = useAppDispatch()
@@ -57,6 +58,7 @@ export default function DetailPanel() {
   const mkt = marketOf(row)
   const cur = CURRENCY[mkt] || '$'
   const { hit, total } = factorsDisplay(row)
+  const research = researchOf(row)
   const passed = (row.factor_breakdown || []).filter((x) => x.status === 'pass')
   const risk = (row.factor_breakdown || []).filter((x) => x.status === 'risk')
   const failed = (row.factor_breakdown || []).filter((x) => x.status === 'fail')
@@ -91,9 +93,37 @@ export default function DetailPanel() {
           <span className="fs fail">{failed.length} failed</span>
         </div>
 
-        {/* Valuable insights for end users: show clear, multiple reasons (fund + catalyst + tech) from backend.
-            This is what users see when they click -- must provide immediate value, not jargon or "weak". */}
-        { (row.why_good_reasons && row.why_good_reasons.length > 0) || (row.criteria && row.criteria.length > 0) ? (
+        {/* Primary value: graded multi-reason research card (grade + grouped reasons + tags) */}
+        {research && (research.groups?.length || research.tags?.length) ? (
+          <div className="research-card">
+            <div className="research-head">
+              <GradeBadge row={row} showTag={false} />
+              <span className="research-head__txt">
+                {research.fundamentally_strong ? 'Fundamentally strong on NSE/BSE' : 'Quality read'}
+                {research.reason_count ? ` · ${research.reason_count} reasons` : ''}
+              </span>
+            </div>
+            {research.tags && research.tags.length > 0 && (
+              <div className="research-tags">
+                {research.tags.map((t, i) => <span key={i} className="research-tag">{t}</span>)}
+              </div>
+            )}
+            <p className="section-label">Why it stands out</p>
+            <div className="research-groups">
+              {(research.groups || []).map((g, gi) => (
+                <div key={gi} className="research-group">
+                  <div className="research-group__title">{g.title}</div>
+                  <ul className="research-group__list">
+                    {g.reasons.map((r, ri) => <li key={ri}>{r}</li>)}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {/* Fallback thesis from backend reasons when no graded research is available */}
+        {!research && ((row.why_good_reasons && row.why_good_reasons.length > 0) || (row.criteria && row.criteria.length > 0)) ? (
           <>
             <p className="section-label">Why this stock stands out</p>
             <ul className="reasons-list">

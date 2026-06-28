@@ -13,6 +13,7 @@ import pandas as pd
 import yfinance as yf
 
 from app.engine.signals import analyze_symbol
+from app.engine.research import build_research
 from app.engine.ml_intel import annotate_ml_intel
 from app.db import insert_snapshot, latest_snapshot_payloads
 
@@ -354,6 +355,10 @@ async def scan_symbols(
                 "provider_status": provider_status,
             }
             payload["metrics"]["provider_status"] = provider_status
+            try:
+                payload["research"] = build_research(payload)
+            except Exception:
+                pass
             _nm = company_names.name_for(sym, info)
             payload["name"] = _nm
             payload["metrics"]["name"] = _nm
