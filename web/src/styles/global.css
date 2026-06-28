@@ -860,7 +860,7 @@ button.tiny,.bell-btn,.search,.search__go,.search-menu__item,.modal-close,.facto
 .sp-pick{display:flex;align-items:center;gap:6px;margin-top:9px;width:100%;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.16);border-radius:8px;padding:4px 8px;cursor:pointer;font:inherit;}
 .sp-pick__grade{font-size:9.5px;font-weight:800;color:#fff;border-radius:4px;padding:1px 4px;background:#16a34a;}
 .sp-pick__name{font-size:11.5px;font-weight:600;color:var(--text,#3a322c);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-@media (max-width:720px){.sp-grid{grid-template-columns:1fr 1fr;}.live-ticker{display:none;}}
+@media (max-width:720px){.sp-grid{grid-template-columns:1fr 1fr;}}
 
 .pick-card__pending{font-size:11px;color:var(--muted,#9ca3af);font-style:italic;}
 
@@ -949,3 +949,81 @@ button.tiny,.bell-btn,.search,.search__go,.search-menu__item,.modal-close,.facto
 .spx-filter{margin-top:11px;width:100%;font-size:12px;font-weight:700;padding:8px;border-radius:9px;border:1px solid var(--accent,#d2674a);background:rgba(210,103,74,.07);color:var(--accent,#d2674a);cursor:pointer;}
 .spx-filter.on{background:var(--accent,#d2674a);color:#fff;}
 @media (max-width:720px){.spx-grid{grid-template-columns:1fr;}}
+
+/* =====================================================================
+   MOBILE PASS — phones (<=560px) for all homepage modules
+   ===================================================================== */
+@media (max-width:560px){
+  /* no accidental horizontal scroll anywhere */
+  html,body{max-width:100%;overflow-x:hidden;}
+  .center__main{padding:12px 12px 80px;}
+  /* 16px inputs so iOS doesn't zoom on focus */
+  .search input,input[type="text"],input[type="search"],select{font-size:16px;}
+
+  /* ---- Live ticker: compact, faster ---- */
+  .live-ticker{margin-bottom:10px;padding:6px 0 6px 10px;border-radius:10px;}
+  .tick-live{font-size:9.5px;}
+  .tick-track{gap:16px;animation-duration:38s;}
+  .tick-sym{font-size:11.5px;}
+  .tick-price,.tick-day{font-size:10.5px;}
+
+  /* ---- Today's Top Picks ---- */
+  .toppicks{margin-bottom:14px;}
+  .toppicks__head{gap:4px;margin-bottom:8px;}
+  .toppicks__head h2{font-size:17px;}
+  .toppicks__sub{font-size:12px;}
+  .market-read{font-size:12.5px;padding:9px 11px;gap:4px 10px;margin-bottom:11px;}
+  .picks-grid{grid-template-columns:1fr;gap:10px;}
+  .pick-card{padding:13px;border-radius:14px;}
+  .pick-card__name{font-size:15.5px;white-space:normal;}
+  .pick-card__reasons li{font-size:12.5px;}
+  .pick-card__watch{font-size:11.5px;}
+
+  /* ---- Stat cards: clean 2-up ---- */
+  .stats{grid-template-columns:1fr 1fr;gap:9px;}
+
+  /* ---- Scan activity ---- */
+  .scan-activity{padding:11px 12px;}
+  .scan-phase{font-size:12px;}
+  .scan-stats{gap:6px;}
+  .scan-chip{flex:1 1 calc(50% - 6px);min-width:0;padding:6px 9px;}
+  .scan-chip b{font-size:15px;}
+  .scan-now__chips,.scan-checking__pills{gap:4px;}
+  .scan-feed__facs{padding-left:0;}
+  .scan-feed__row{font-size:12px;}
+
+  /* ---- Sector Pulse v2 ---- */
+  .sector-pulse{margin-bottom:14px;}
+  .sp-head h2{font-size:17px;}
+  .sp-head .sp-sub{font-size:11.5px;flex-basis:100%;order:3;}
+  .sp-sort{font-size:13px;}
+  .sp-cycles{gap:7px;overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;-webkit-overflow-scrolling:touch;}
+  .sp-cycle{flex:0 0 auto;min-width:118px;}
+  .spx-grid{grid-template-columns:1fr;gap:10px;}
+  .spx-card.open{grid-column:auto;}
+  .spx-name{font-size:13.5px;}
+  .spx-stats{font-size:11px;gap:3px 10px;}
+  .spx-pick__name{max-width:46vw;}
+  .spx-pick__arch{display:none;}            /* save room; archetype shown in detail */
+  .spx-list{max-height:none;}                /* let expanded list flow on phone */
+  .spx-pick{padding:8px 6px;}                /* bigger tap target */
+
+  /* ---- Detail panel research note ---- */
+  .research-card,.profile-note{padding:12px;}
+  .profile-row p,.profile-watch li{font-size:13px;}
+
+  /* ---- Hot Movers cards: show grade + reasons cleanly ---- */
+  .grid-table tbody td.col-cats{padding-top:7px;}
+  .cats__reason{font-size:12px;}
+  .verdict{font-size:11.5px;}
+  .grade-wrap{margin-left:4px;}
+}
+
+/* Small phones (<=400px) — squeeze a touch more */
+@media (max-width:400px){
+  .toppicks__head h2,.sp-head h2,.toppicks__head{font-size:16px;}
+  .scan-chip{flex:1 1 100%;}
+  .pick-card__tags .pick-tag{font-size:10px;}
+  .spx-pick__name{max-width:40vw;}
+  .market-read__stats{flex-basis:100%;}
+}
