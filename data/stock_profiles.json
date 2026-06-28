@@ -600,5 +600,486 @@
     ],
     "ownership": "Promoter: Tata Group.",
     "special": "Tata's consumer reinvention — staples brands (tea, salt) plus a fast-growing foods push."
+  },
+  "COLPAL.NS": {
+    "biz": "Colgate — toothpaste and oral care.",
+    "archetype": "Defensive compounder",
+    "special": "Colgate is synonymous with toothpaste in India — a category it has led for generations.",
+    "watch": [
+      "Single-category dependence limits growth",
+      "Naturals/Patanjali competition in oral care"
+    ]
+  },
+  "M&M.NS": {
+    "biz": "Mahindra — tractors, SUVs and farm equipment.",
+    "archetype": "Cyclical leader",
+    "special": "India's tractor king and a resurgent SUV maker — a rural + premium-auto double play.",
+    "watch": [
+      "Tractor demand swings with monsoons and rural income",
+      "Sprawl of subsidiaries muddies capital allocation"
+    ]
+  },
+  "BAJAJ-AUTO.NS": {
+    "biz": "Maker of motorcycles and three-wheelers (Pulsar, KTM).",
+    "archetype": "Cyclical compounder + dividend",
+    "special": "The export powerhouse of Indian two- and three-wheelers, with premium KTM/Pulsar brands.",
+    "watch": [
+      "Exports exposed to emerging-market currency/credit stress",
+      "EV transition in two-wheelers"
+    ]
+  },
+  "HEROMOTOCO.NS": {
+    "biz": "World's largest motorcycle maker by volume.",
+    "archetype": "Cyclical leader",
+    "special": "The world's largest motorcycle maker by volume — owns India's mass commuter-bike market.",
+    "watch": [
+      "Late to premium and EV segments",
+      "Rural demand sensitivity"
+    ]
+  },
+  "TVSMOTOR.NS": {
+    "biz": "Two-wheeler maker, aggressive on EVs.",
+    "archetype": "Cyclical compounder",
+    "special": "The most aggressive of the two-wheeler majors on EVs and premiumisation.",
+    "watch": [
+      "Rich valuation versus peers",
+      "EV profitability still developing"
+    ]
+  },
+  "DRREDDY.NS": {
+    "biz": "Generics pharma with big US exposure.",
+    "archetype": "Compounder",
+    "special": "A generics heavyweight with deep US presence — earnings ride big drug launches and approvals.",
+    "watch": [
+      "US price erosion and FDA plant inspections",
+      "Lumpy, launch-driven earnings"
+    ]
+  },
+  "CIPLA.NS": {
+    "biz": "Pharma — respiratory and chronic-care focus.",
+    "archetype": "Compounder",
+    "special": "A respiratory and chronic-care specialist with a trusted home brand and growing US business.",
+    "watch": [
+      "US generic competition",
+      "FDA plant risk"
+    ]
+  },
+  "DIVISLAB.NS": {
+    "biz": "Maker of APIs and custom synthesis for global pharma.",
+    "archetype": "Compounder",
+    "special": "A global API and custom-synthesis supplier — the picks-and-shovels for the world's drug makers.",
+    "watch": [
+      "Client concentration in big pharma",
+      "China API competition",
+      "Premium valuation"
+    ]
+  },
+  "SIEMENS.NS": {
+    "biz": "Industrial automation, power and digital industries.",
+    "archetype": "Capex cyclical",
+    "special": "A direct proxy for India's industrial capex and power-grid build-out, with German engineering pedigree.",
+    "watch": [
+      "Order-cycle dependent earnings",
+      "Expensive multiple"
+    ]
+  },
+  "ABB.NS": {
+    "biz": "Electrification, automation and robotics.",
+    "archetype": "Capex cyclical",
+    "special": "Rides electrification, automation and data-centre demand — a premium industrial-automation play.",
+    "watch": [
+      "Lumpy order inflows",
+      "High valuation"
+    ]
+  },
+  "CUMMINSIND.NS": {
+    "biz": "Diesel engines and gensets.",
+    "archetype": "Cyclical compounder + dividend",
+    "special": "India's go-to for gensets and engines — a beneficiary of data-centre and backup-power demand.",
+    "watch": [
+      "Cyclical industrial demand",
+      "Emission-norm transitions"
+    ]
+  },
+  "BHARTIARTL.NS": {
+    "biz": "Telecom — mobile, broadband, Africa.",
+    "archetype": "Compounder (infra)",
+    "special": "Half of India's telecom duopoly with Jio — rising data use and tariff hikes drive cash flows.",
+    "watch": [
+      "Heavy capex and spectrum costs",
+      "Tariff competition with Jio"
+    ]
+  },
+  "SHREECEM.NS": {
+    "biz": "Cement, known for low-cost operations.",
+    "archetype": "Cyclical leader",
+    "special": "Among the lowest-cost cement producers in India — an operational-efficiency machine.",
+    "watch": [
+      "Cement demand/price cyclicality",
+      "Energy cost swings",
+      "Premium valuation"
+    ]
+  },
+  "GRASIM.NS": {
+    "biz": "Aditya Birla holdco — cement (UltraTech), VSF, chemicals, paints.",
+    "archetype": "Conglomerate",
+    "special": "An Aditya Birla holdco that owns cement giant UltraTech plus a bold new paints bet (Birla Opus).",
+    "watch": [
+      "Holdco discount",
+      "Paints foray burns cash early",
+      "Cyclical chemicals/VSF"
+    ]
+  },
+  "JSWSTEEL.NS": {
+    "biz": "India's largest private steelmaker.",
+    "archetype": "Commodity cyclical",
+    "special": "India's largest private steelmaker — a leveraged play on steel prices and infra demand.",
+    "watch": [
+      "Steel-price and coking-coal swings",
+      "High debt in down-cycles"
+    ]
+  },
+  "TATASTEEL.NS": {
+    "biz": "Steel — low-cost India mills plus Europe.",
+    "archetype": "Commodity cyclical",
+    "special": "A steel giant with India's low-cost mills offset by a tougher European business.",
+    "watch": [
+      "Europe operations drag earnings",
+      "Global steel-price cyclicality",
+      "Debt"
+    ]
+  },
+  "HINDALCO.NS": {
+    "biz": "Aluminium and copper; owns Novelis.",
+    "archetype": "Commodity cyclical",
+    "special": "Aluminium major whose Novelis arm is the world's biggest aluminium-rolling and recycling business.",
+    "watch": [
+      "Aluminium price and energy costs",
+      "Novelis capex cycle"
+    ]
+  },
+  "POWERGRID.NS": {
+    "biz": "Owns India's electricity transmission grid (PSU).",
+    "archetype": "Regulated dividend compounder",
+    "special": "Owns most of India's electricity highways — a regulated near-monopoly cash compounder with a fat dividend.",
+    "watch": [
+      "Regulated returns cap upside",
+      "PSU/government influence"
+    ]
+  },
+  "ONGC.NS": {
+    "biz": "India's largest oil & gas explorer (PSU).",
+    "archetype": "Deep-value dividend",
+    "special": "India's biggest oil and gas explorer — a high-dividend, deep-value play on crude.",
+    "watch": [
+      "Earnings swing with crude prices",
+      "Government subsidy/pricing burden",
+      "Declining mature fields"
+    ]
+  },
+  "IOC.NS": {
+    "biz": "India's largest fuel refiner and retailer (PSU).",
+    "archetype": "Deep-value dividend",
+    "special": "India's largest fuel retailer and refiner — cheap, high-yield, and tied to refining margins.",
+    "watch": [
+      "Refining-margin and crude swings",
+      "Government pricing control"
+    ]
+  },
+  "TATAPOWER.NS": {
+    "biz": "Integrated power; pivoting to renewables.",
+    "archetype": "Growth-utility transition",
+    "special": "Tata's integrated power play — pivoting hard from coal to renewables, solar EPC and EV charging.",
+    "watch": [
+      "Heavy renewables capex and debt",
+      "Regulatory tariff risk"
+    ]
+  },
+  "TECHM.NS": {
+    "biz": "IT services, strong in telecom/5G.",
+    "archetype": "Cyclical (telecom IT)",
+    "special": "The IT major most tied to global telecom and 5G spending — a differentiated but cyclical niche.",
+    "watch": [
+      "Telecom-vertical concentration",
+      "Margins lag larger peers"
+    ]
+  },
+  "LTIM.NS": {
+    "biz": "L&T's merged IT services arm (LTIMindtree).",
+    "archetype": "Compounder",
+    "special": "L&T's merged IT services arm — a top-tier player with strong enterprise reach.",
+    "watch": [
+      "Integration of the LTI–Mindtree merger",
+      "Global IT-budget cyclicality"
+    ]
+  },
+  "PERSISTENT.NS": {
+    "biz": "Digital engineering and product IT services.",
+    "archetype": "High-growth compounder",
+    "special": "A fast-growing digital-engineering specialist — punchier growth than the IT giants.",
+    "watch": [
+      "Premium valuation",
+      "Smaller and more client-concentrated"
+    ]
+  },
+  "COFORGE.NS": {
+    "biz": "Mid-cap IT services winning large deals.",
+    "archetype": "High-growth compounder",
+    "special": "A high-growth mid-cap IT firm winning large deals above its weight class.",
+    "watch": [
+      "Rich valuation",
+      "Deal-execution and client-concentration risk"
+    ]
+  },
+  "BAJAJHLDNG.NS": {
+    "biz": "Holding company for Bajaj Finance & Bajaj Auto.",
+    "archetype": "Holdco value",
+    "special": "The cheapest backdoor into Bajaj Finance and Bajaj Auto — a deep holdco discount.",
+    "watch": [
+      "Persistent holdco discount",
+      "No operating control"
+    ]
+  },
+  "HDFCLIFE.NS": {
+    "biz": "Private life insurer (HDFC brand).",
+    "archetype": "Compounder",
+    "special": "A top private life insurer with the trusted HDFC brand and strong agency + bank distribution.",
+    "watch": [
+      "Regulatory/tax changes on policies",
+      "Equity-market-linked persistency"
+    ]
+  },
+  "SBILIFE.NS": {
+    "biz": "India's largest private life insurer.",
+    "archetype": "Compounder",
+    "special": "India's largest private life insurer — rides SBI's unmatched bank-branch distribution.",
+    "watch": [
+      "Product-mix and margin shifts",
+      "Regulatory changes"
+    ]
+  },
+  "ICICIGI.NS": {
+    "biz": "Leading private general (non-life) insurer.",
+    "archetype": "Compounder",
+    "special": "India's leading private general insurer — a play on motor and health insurance growth.",
+    "watch": [
+      "Motor-pricing competition",
+      "Claims and catastrophe cycles"
+    ]
+  },
+  "ICICIPRULI.NS": {
+    "biz": "Large private life insurer.",
+    "archetype": "Compounder",
+    "special": "A large private life insurer with a strong protection and ULIP franchise.",
+    "watch": [
+      "Equity-linked product sensitivity",
+      "Regulatory changes"
+    ]
+  },
+  "MUTHOOTFIN.NS": {
+    "biz": "India's biggest gold-loan lender.",
+    "archetype": "Niche lender",
+    "special": "India's biggest gold-loan lender — a high-yield niche backed by gold collateral.",
+    "watch": [
+      "Gold-price swings affect the loan book",
+      "Regulatory tightening on gold loans"
+    ]
+  },
+  "CHOLAFIN.NS": {
+    "biz": "Vehicle and SME finance (Murugappa group).",
+    "archetype": "Compounder",
+    "special": "A well-run vehicle and SME financier with one of the best track records in NBFCs.",
+    "watch": [
+      "Credit-cycle sensitivity",
+      "Funding-cost pressure"
+    ]
+  },
+  "SBICARD.NS": {
+    "biz": "India's only listed pure-play credit-card firm.",
+    "archetype": "High-growth lender",
+    "special": "India's only listed pure-play credit-card company — a direct bet on rising card spends.",
+    "watch": [
+      "Unsecured-credit losses in downturns",
+      "Regulatory caps on fees/rates"
+    ]
+  },
+  "PAGEIND.NS": {
+    "biz": "Holds the Jockey innerwear licence in India.",
+    "archetype": "Premium consumer compounder",
+    "special": "Holds the Jockey licence in India — premium innerwear with real brand pricing power.",
+    "watch": [
+      "Very high valuation",
+      "Discretionary-slowdown sensitivity"
+    ]
+  },
+  "HAVELLS.NS": {
+    "biz": "Electrical goods and consumer durables (incl. Lloyd).",
+    "archetype": "Consumer compounder",
+    "special": "A trusted electricals and durables brand (incl. Lloyd ACs) riding premiumisation.",
+    "watch": [
+      "Lloyd/AC competition and margins",
+      "Input-cost swings"
+    ]
+  },
+  "VOLTAS.NS": {
+    "biz": "India's No.1 air-conditioner brand.",
+    "archetype": "Consumer cyclical",
+    "special": "India's No.1 air-conditioner brand — a direct play on rising cooling demand and hotter summers.",
+    "watch": [
+      "Seasonal, weather-dependent demand",
+      "AC price competition"
+    ]
+  },
+  "DIXON.NS": {
+    "biz": "India's largest contract electronics manufacturer.",
+    "archetype": "High-growth (EMS)",
+    "special": "India's largest contract electronics manufacturer — the marquee Make-in-India / PLI beneficiary.",
+    "watch": [
+      "Wafer-thin manufacturing margins",
+      "Extreme valuation",
+      "Client concentration"
+    ]
+  },
+  "POLYCAB.NS": {
+    "biz": "Market leader in wires & cables.",
+    "archetype": "Cyclical compounder",
+    "special": "The market leader in wires & cables — a quiet beneficiary of construction and electrification.",
+    "watch": [
+      "Copper-price swings",
+      "Cyclical construction demand"
+    ]
+  },
+  "ASTRAL.NS": {
+    "biz": "Premium plumbing pipes, expanding into adhesives.",
+    "archetype": "Compounder",
+    "special": "A premium plumbing-pipes brand expanding into adhesives — a building-materials compounder.",
+    "watch": [
+      "PVC raw-material price swings",
+      "Premium valuation"
+    ]
+  },
+  "SUPREMEIND.NS": {
+    "biz": "Plastic piping and building products.",
+    "archetype": "Cyclical compounder",
+    "special": "A leading plastic-pipes and building-products maker — a steady housing and agri play.",
+    "watch": [
+      "PVC price/inventory swings",
+      "Cyclical demand"
+    ]
+  },
+  "APLAPOLLO.NS": {
+    "biz": "Leader in structural steel tubes.",
+    "archetype": "High-growth cyclical",
+    "special": "The category creator and leader in structural steel tubes — a fast-growing construction proxy.",
+    "watch": [
+      "Steel-price volatility",
+      "Premium valuation"
+    ]
+  },
+  "TATAMOTORS.NS": {
+    "biz": "Commercial vehicles, passenger EVs and Jaguar Land Rover.",
+    "archetype": "Cyclical turnaround",
+    "special": "Owns Jaguar Land Rover plus India's leading commercial-vehicle and growing EV business — a turnaround that delivered.",
+    "watch": [
+      "JLR tied to China/Europe luxury demand",
+      "CV cycle and heavy capex"
+    ]
+  },
+  "JINDALSTEL.NS": {
+    "biz": "Integrated steel and power.",
+    "archetype": "Commodity cyclical",
+    "special": "An integrated steel-and-power maker deleveraging into an up-cycle.",
+    "watch": [
+      "Steel-price and debt sensitivity",
+      "Execution on expansions"
+    ]
+  },
+  "ADANIPORTS.NS": {
+    "biz": "India's largest private port operator.",
+    "archetype": "Infra compounder",
+    "special": "India's largest private port operator — the logistics backbone of the Adani group and a trade proxy.",
+    "watch": [
+      "Adani-group governance and leverage scrutiny",
+      "Trade-volume cyclicality"
+    ]
+  },
+  "GAIL.NS": {
+    "biz": "Natural-gas transmission and marketing (PSU).",
+    "archetype": "Regulated dividend",
+    "special": "India's natural-gas transmission backbone — a regulated, high-yield play on gas demand.",
+    "watch": [
+      "Petchem/LPG commodity swings",
+      "Gas-pricing policy",
+      "PSU risk"
+    ]
+  },
+  "VEDL.NS": {
+    "biz": "Diversified metals & resources (zinc, aluminium, oil).",
+    "archetype": "Deep-value dividend (high risk)",
+    "special": "A diversified metals and resources group with a famously high dividend — and famously high debt.",
+    "watch": [
+      "Heavy parent-level debt",
+      "Commodity-price swings",
+      "Governance scrutiny"
+    ]
+  },
+  "INDIGO.NS": {
+    "biz": "India's dominant low-cost airline.",
+    "archetype": "Cyclical leader",
+    "special": "India's dominant airline — roughly 60% domestic share with a low-cost model rivals can't match.",
+    "watch": [
+      "Fuel-price and forex swings",
+      "Aviation is structurally thin-margin",
+      "Capacity and competition"
+    ]
+  },
+  "ZOMATO.NS": {
+    "biz": "Food delivery plus quick commerce (Blinkit).",
+    "archetype": "High-growth platform",
+    "special": "The food-delivery leader now scaling quick-commerce (Blinkit) — India's marquee new-economy platform.",
+    "watch": [
+      "Quick-commerce cash burn and competition",
+      "Valuation prices in years of growth",
+      "Gig/delivery regulation"
+    ]
+  },
+  "VBL.NS": {
+    "biz": "PepsiCo's largest bottler outside the US.",
+    "archetype": "High-growth compounder",
+    "special": "PepsiCo's largest bottler outside the US — a compounding play on India's rising soft-drink consumption.",
+    "watch": [
+      "Seasonal, weather-linked demand",
+      "Sugar-tax / health regulation",
+      "Premium valuation"
+    ]
+  },
+  "IRCTC.NS": {
+    "biz": "Online rail tickets, catering and rail water (PSU).",
+    "archetype": "Monopoly (PSU)",
+    "special": "A government-granted monopoly on online rail tickets, catering and packaged rail water — a rare asset-light moat.",
+    "watch": [
+      "Government can change the convenience-fee policy overnight",
+      "PSU policy risk"
+    ]
+  },
+  "PFC.NS": {
+    "biz": "State-backed lender to the power sector (PSU).",
+    "archetype": "Deep-value dividend",
+    "special": "A state-backed lender to the power sector — very cheap, with a high dividend yield.",
+    "watch": [
+      "Concentrated power-sector exposure",
+      "PSU/government direction",
+      "Asset-quality cycles"
+    ]
+  },
+  "RECLTD.NS": {
+    "biz": "Power-sector PSU financier.",
+    "archetype": "Deep-value dividend",
+    "special": "A power-sector PSU financier — high-yield and cheap, lending into India's energy build-out.",
+    "watch": [
+      "Power-sector concentration",
+      "PSU policy risk",
+      "Rate-cycle sensitivity"
+    ]
   }
 }
