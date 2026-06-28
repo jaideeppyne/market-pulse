@@ -55,6 +55,7 @@ def _cyclical_meta(sector_name: str, bucket: str) -> dict[str, str]:
 
 def _slim_pick(row: dict[str, Any]) -> dict[str, Any]:
     m = row.get("metrics") or {}
+    res = row.get("research") or {}
     return {
         "symbol": row.get("symbol"),
         "market": row.get("market"),
@@ -64,10 +65,15 @@ def _slim_pick(row: dict[str, Any]) -> dict[str, Any]:
         "factors_hit": row.get("factors_hit"),
         "factors_total": row.get("factors_total"),
         "day_chg_pct": m.get("day_chg_pct"),
+        "price": m.get("price"),
         "name": m.get("name"),
         "is_extended": m.get("is_extended"),
         "sector_bucket": m.get("sector_bucket"),
         "pct_52w_range": m.get("pct_52w_range"),
+        "grade": res.get("grade"),
+        "archetype": res.get("archetype"),
+        "fundamentally_strong": res.get("fundamentally_strong"),
+        "tags": (res.get("tags") or [])[:2],
     }
 
 
