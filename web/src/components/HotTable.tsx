@@ -28,7 +28,12 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   const cur = CURRENCY[mkt] || '$'
   const { hit, total } = factorsDisplay(row)
   const nm = displayName(row)
-  const reason = m.smart_money?.primary_alert || (row.alerts || [])[0] || m.sector
+  // Prefer rich reasons/criteria from backend for valuable insights (fundamentals, catalysts) instead of generic sector or single alert.
+  // This makes the constantly-visible table actually useful to end users.
+  const richReasons = (row.why_good_reasons || m.reasons || row.criteria || []).slice(0, 2)
+  const reason = richReasons.length > 0 
+    ? richReasons.map((r: any) => (typeof r === 'string' ? r : r.text || r)).join(' • ')
+    : (m.smart_money?.primary_alert || (row.alerts || [])[0] || m.sector || '—')
   const vd = verdict(row)
 
   const watch = (e: React.MouseEvent) => { e.stopPropagation(); addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }

@@ -108,6 +108,22 @@ export default function CommandCenter() {
               </div>
             </div>
             <p className="panel-hint">Live ranking — click any score or row for the full 100+ factor checklist. Scan More runs aggressive multi-site discovery.</p>
+
+            {/* Valuable insights on homepage so end users immediately see why to use the site.
+                Constantly showing high-signal info: count of quality setups, key catalysts, focus on fundamentals for India. */}
+            {(() => {
+              const indiaPool = (data?.hot_by_market?.india || pool).filter((r: any) => (r.market || '').toLowerCase() === 'india');
+              const highFund = indiaPool.filter((r: any) => (r.fundamental_reasons_count || (r.metrics && r.metrics.fundamental_reasons_count) || 0) >= 2).length;
+              const catalysts = indiaPool.flatMap((r: any) => (r.why_good_reasons || (r.metrics && r.metrics.reasons) || []).map((rr: any) => (typeof rr === 'string' ? rr : rr.text || '')));
+              const topCat = catalysts.length ? [...new Set(catalysts)].slice(0,3).join(', ') : '—';
+              return highFund > 0 || catalysts.length > 0 ? (
+                <div className="insights-bar" style={{margin: '8px 0', padding: '8px', background: '#f8fafc', borderRadius: '6px', fontSize: '0.9em'}}>
+                  <strong>Insights:</strong> {highFund} India stocks with multiple fundamental strengths (promoter/FII/FCF/growth). 
+                  Key catalysts spotted: {topCat}. Click rows for full thesis + reasons.
+                </div>
+              ) : null;
+            })()}
+
             <HotTable />
           </section>
         </div>

@@ -91,18 +91,18 @@ export default function DetailPanel() {
           <span className="fs fail">{failed.length} failed</span>
         </div>
 
-        {/* Use rich reasons/criteria from backend (our fundamental + catalyst work) for user-friendly view.
-            Falls back to old passed factors if not present. Prioritizes plain reasons over jargon. */}
-        { (row.why_good_reasons && row.why_good_reasons.length > 0) ? (
+        {/* Valuable insights for end users: show clear, multiple reasons (fund + catalyst + tech) from backend.
+            This is what users see when they click -- must provide immediate value, not jargon or "weak". */}
+        { (row.why_good_reasons && row.why_good_reasons.length > 0) || (row.criteria && row.criteria.length > 0) ? (
           <>
-            <p className="section-label">Key reasons why interesting</p>
-            <div className="factor-chips">
-              {row.why_good_reasons.slice(0, 6).map((r: any, i: number) => (
-                <span key={i} className="chip-pass" title={r.evidence || r.text}>
-                  {r.text || r}
-                </span>
-              ))}
-            </div>
+            <p className="section-label">Why this stock stands out</p>
+            <ul className="reasons-list">
+              {(row.why_good_reasons || row.criteria || []).slice(0, 5).map((r: any, i: number) => {
+                const text = typeof r === 'string' ? r : (r.text || r.label || JSON.stringify(r));
+                return <li key={i}>{text}</li>;
+              })}
+            </ul>
+            {row.thesis && <p className="thesis-summary muted">{row.thesis}</p>}
           </>
         ) : passed.length > 0 && (
           <>
