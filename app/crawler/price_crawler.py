@@ -1,17 +1,101 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
+from io import StringIO
 import logging
+import time
 from typing import Any
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import yfinance as yf
 
 from app.engine.signals import analyze_symbol
 from app.engine.ml_intel import annotate_ml_intel
-from app.db import insert_snapshot
+from app.db import insert_snapshot, latest_snapshot_payloads
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Snapshot write-gating state. Avoids persisting every symbol every ~90s scan.
+# In-process memory of the last stored (score, ts) per symbol so we can skip
+# rows that are not meaningful (low score AND unchanged AND recently stored).
+# ---------------------------------------------------------------------------
+_last_snapshot: dict[str, tuple[float, float]] = {}  # symbol -> (score, epoch_seconds)
+
+# Defaults; overridden from config.yaml scanner: section via configure_snapshot_gating().
+_SNAPSHOT_MIN_SCORE = 50.0          # always snapshot at/above this score
+_SNAPSHOT_MIN_INTERVAL_SEC = 600.0  # per-symbol min seconds between stored rows
+_SNAPSHOT_MIN_SCORE_DELTA = 5.0     # materially-changed score forces a snapshot
+_SNAPSHOT_FLOOR_SCORE = 40.0        # below this, never snapshot (noise floor)
+
+
+_gating_loaded = False
+
+
+def configure_snapshot_gating(scanner_cfg: dict | None) -> None:
+    """Load snapshot write-gating thresholds from the scanner: config section."""
+    global _SNAPSHOT_MIN_SCORE, _SNAPSHOT_MIN_INTERVAL_SEC, _SNAPSHOT_MIN_SCORE_DELTA, _SNAPSHOT_FLOOR_SCORE, _gating_loaded
+    cfg = scanner_cfg or {}
+    try:
+        _SNAPSHOT_MIN_SCORE = float(cfg.get("snapshot_min_score", _SNAPSHOT_MIN_SCORE))
+        _SNAPSHOT_MIN_INTERVAL_SEC = float(cfg.get("snapshot_min_interval_sec", _SNAPSHOT_MIN_INTERVAL_SEC))
+        _SNAPSHOT_MIN_SCORE_DELTA = float(cfg.get("snapshot_min_score_delta", _SNAPSHOT_MIN_SCORE_DELTA))
+        _SNAPSHOT_FLOOR_SCORE = float(cfg.get("snapshot_floor_score", _SNAPSHOT_FLOOR_SCORE))
+    except (TypeError, ValueError):
+        pass
+    _gating_loaded = True
+
+
+def _ensure_gating_loaded() -> None:
+    """Lazily load scanner: gating config on first scan so callers (in app/main.py,
+    which we don't own) don't have to wire configure_snapshot_gating() explicitly."""
+    global _gating_loaded
+    if _gating_loaded:
+        return
+    _gating_loaded = True  # set first so failures don't retry every call
+    try:
+        from app.config import load_config
+
+        cfg = load_config() or {}
+        configure_snapshot_gating(cfg.get("scanner") or {})
+    except Exception as e:
+        logger.debug("snapshot gating config load skipped: %s", str(e)[:120])
+
+
+def data_source_health() -> dict[str, Any]:
+    """Public passthrough for the data-source health snapshot (yfinance/Stooq).
+
+    Other modules (e.g. a /api/health endpoint owned by another agent) can surface
+    this to make the yfinance single-point-of-failure observable.
+    """
+    return get_source_health()
+
+
+def _should_snapshot(symbol: str, score: float, now: float) -> bool:
+    """Gate snapshot writes: store only meaningful rows.
+
+    Persist when ANY of:
+      * score >= snapshot_min_score (high-conviction always kept), OR
+      * score moved materially (>= delta) vs the last stored row, OR
+      * it has been at least snapshot_min_interval_sec since this symbol was stored.
+    Never store below the noise floor.
+    """
+    if score < _SNAPSHOT_FLOOR_SCORE:
+        return False
+    prev = _last_snapshot.get(symbol)
+    if prev is None:
+        return True
+    prev_score, prev_ts = prev
+    if score >= _SNAPSHOT_MIN_SCORE:
+        return True
+    if abs(score - prev_score) >= _SNAPSHOT_MIN_SCORE_DELTA:
+        return True
+    if (now - prev_ts) >= _SNAPSHOT_MIN_INTERVAL_SEC:
+        return True
+    return False
 
 
 def _normalize_history_frame(data: pd.DataFrame, sym: str) -> pd.DataFrame:
@@ -72,7 +156,7 @@ def _fetch_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict
             interval="1d",
             group_by="ticker",
             auto_adjust=True,
-            threads=True,
+            threads=False,
             progress=False,
         )
     except Exception as e:
@@ -102,6 +186,114 @@ def _fetch_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict
     return out
 
 
+def _fetch_history_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict | None]]:
+    """History-only yfinance fetch for live scans.
+
+    This avoids per-symbol Ticker.info quoteSummary calls, which are the main
+    Yahoo rate-limit/error source. Full ad-hoc analysis can opt into info fetches.
+    """
+    out: dict[str, tuple[pd.DataFrame, dict, dict | None]] = {}
+    if not symbols:
+        return out
+    try:
+        data = yf.download(
+            symbols,
+            period="6mo",
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=True,
+            threads=False,
+            progress=False,
+        )
+    except Exception as e:
+        logger.error("History download error: %s", e)
+        return out
+    if data is None or data.empty:
+        return out
+    for sym in symbols:
+        try:
+            df = _normalize_history_frame(data, sym).dropna()
+            if not df.empty:
+                out[sym] = (df, {"symbol": sym, "provider": "yfinance_history"}, None)
+        except Exception:
+            continue
+    return out
+
+
+def _stooq_symbol(sym: str) -> str:
+    return sym.lower().replace(".", "-") + ".us"
+
+
+def _fetch_stooq_one(sym: str) -> tuple[pd.DataFrame, dict, dict | None] | None:
+    """Fetch daily history from Stooq for US symbols.
+
+    Stooq is used as the primary live-scan history source where it has good
+    coverage. Yahoo remains a fallback because Stooq has limited fundamentals,
+    India and UK coverage.
+    """
+    try:
+        end = datetime.now(timezone.utc).date()
+        start = end - timedelta(days=220)
+        query = urlencode({"s": _stooq_symbol(sym), "d1": start.strftime("%Y%m%d"), "d2": end.strftime("%Y%m%d"), "i": "d"})
+        req = Request(f"https://stooq.com/q/d/l/?{query}", headers={"User-Agent": "market-pulse/1.0"})
+        with urlopen(req, timeout=8) as resp:
+            text = resp.read().decode("utf-8", errors="replace")
+        if not text or "No data" in text or "Date," not in text:
+            return None
+        df = pd.read_csv(StringIO(text))
+        if df.empty or "Close" not in df.columns:
+            return None
+        df["Date"] = pd.to_datetime(df["Date"])
+        df = df.set_index("Date").sort_index()
+        return df.dropna(), {"symbol": sym, "provider": "stooq"}, None
+    except Exception as e:
+        logger.debug("Stooq fetch failed for %s: %s", sym, str(e)[:100])
+        return None
+
+
+def _fetch_stooq_batch(symbols: list[str]) -> dict[str, tuple[pd.DataFrame, dict, dict | None]]:
+    out: dict[str, tuple[pd.DataFrame, dict, dict | None]] = {}
+    for sym in symbols:
+        hit = _fetch_stooq_one(sym)
+        if hit and hit[0] is not None and not hit[0].empty:
+            out[sym] = hit
+    return out
+
+
+from app import company_names
+from app.crawler.price_source import fetch_yahoo_chart_batch, fetch_names_batch
+
+
+def _fetch_batch_with_status(symbols: list[str], market: str, *, include_info: bool = False) -> dict[str, tuple[pd.DataFrame, dict, dict | None, str]]:
+    """Provider layer with fallback and provider provenance.
+
+    US live scans try Stooq first so yfinance is no longer the primary realtime
+    source. Missing symbols then fall back to yfinance. India/UK currently use
+    yfinance first because alternate free-source coverage is unreliable.
+    """
+    out: dict[str, tuple[pd.DataFrame, dict, dict | None, str]] = {}
+    missing = list(symbols)
+    if market == "us":
+        stooq = _fetch_stooq_batch(symbols)
+        for sym, (hist, info, cal) in stooq.items():
+            out[sym] = (hist, info, cal, "stooq")
+        missing = [s for s in symbols if s not in out]
+    if missing:
+        if market == "us" and not include_info:
+            return out
+        yahoo = _fetch_batch(missing) if include_info else _fetch_history_batch(missing)
+        for sym, (hist, info, cal) in yahoo.items():
+            out[sym] = (hist, info, cal, "yfinance_fallback" if market == "us" else "yfinance_history")
+    # Final no-crumb fallback (Yahoo chart endpoint) for whatever is still missing.
+    # This is the India/UK resilience path when yfinance is crumb-rate-limited.
+    still_missing = [s for s in symbols if s not in out]
+    if still_missing:
+        chart = fetch_yahoo_chart_batch(still_missing)
+        for sym, (hist, info, cal) in chart.items():
+            out[sym] = (hist, info, cal, "yahoo_chart")
+    return out
+
+
 async def scan_symbols(
     symbols: list[str],
     market: str,
@@ -111,14 +303,14 @@ async def scan_symbols(
     news_titles_by_symbol: dict[str, list[str]] | None = None,
     events_by_symbol: dict[str, list[dict]] | None = None,
 ) -> list[dict[str, Any]]:
-    raw = await asyncio.to_thread(_fetch_batch, symbols)
+    raw = await asyncio.to_thread(_fetch_batch_with_status, symbols, market)
     earnings_by_symbol = earnings_by_symbol or {}
     news_titles_by_symbol = news_titles_by_symbol or {}
     events_by_symbol = events_by_symbol or {}
     results: list[dict[str, Any]] = []
     for sym, data in raw.items():
         try:
-            hist, info, calendar = data if data is not None else (None, {}, None)
+            hist, info, calendar, provider_status = data if data is not None else (None, {}, None, "missing")
             if hist is None or getattr(hist, "empty", False) or len(hist) < 10:
                 continue  # bad / delisted / insufficient - skip fast for resilience
             earn = earnings_by_symbol.get(sym)
@@ -159,15 +351,47 @@ async def scan_symbols(
                 "factor_details": sig.factor_details,
                 "factor_breakdown": sig.factor_breakdown,
                 "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()],
+                "provider_status": provider_status,
             }
+            payload["metrics"]["provider_status"] = provider_status
+            _nm = company_names.name_for(sym, info)
+            payload["name"] = _nm
+            payload["metrics"]["name"] = _nm
             results.append(payload)
         except Exception as e:
             # Skip bad/delisted/rate-limited tickers fast (resilience for India/US scans, prevents stalling on junk in extra lists)
             logger.debug("scan skip %s: %s", sym, str(e)[:80])
             continue
     annotate_ml_intel(results)
+    missing = [s for s in symbols if s not in {r.get("symbol") for r in results}]
+    if missing:
+        try:
+            fallback_rows = await latest_snapshot_payloads(missing, max_age_hours=24)
+            results.extend(fallback_rows.values())
+        except Exception as e:
+            logger.debug("last-good snapshot fallback failed: %s", str(e)[:100])
     results.sort(key=lambda x: x.get("buy_score", x.get("score", 0)), reverse=True)
+    # Enrich missing company names from Yahoo chart meta (bounded, cached forever).
+    try:
+        need = [r["symbol"] for r in results if company_names.name_for(r["symbol"]) == r["symbol"]][:30]
+        if need:
+            learned = await asyncio.to_thread(fetch_names_batch, need)
+            for _s, _nm in learned.items():
+                company_names.record(_s, {"longName": _nm})
+            for r in results:
+                _nm = company_names.name_for(r["symbol"])
+                if _nm and _nm != r["symbol"]:
+                    r["name"] = _nm
+                    if isinstance(r.get("metrics"), dict):
+                        r["metrics"]["name"] = _nm
+    except Exception as _e:
+        logger.debug("name enrichment skipped: %s", str(_e)[:100])
+    # Write-gated snapshot persistence (avoids storing every symbol every scan).
+    _ensure_gating_loaded()
+    now = time.monotonic()
     for payload in results:
+        if payload.get("stale") or payload.get("provider_status") == "last_good_snapshot":
+            continue
         snapshot_score = payload.get("buy_score", payload.get("score", 0))
         if snapshot_score >= 40:
             await insert_snapshot(payload["symbol"], market, payload, snapshot_score)
@@ -194,8 +418,12 @@ async def full_exhaustive_scan(
     from app.engine.signals import analyze_symbol
     import time
     import numpy as np
-    from sklearn.ensemble import IsolationForest
-    from sklearn.preprocessing import StandardScaler
+    try:
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+        _HAS_SKLEARN = True
+    except Exception:
+        _HAS_SKLEARN = False
     news_counts = news_counts or {}
     news_titles = news_titles or {}
     earnings_map = earnings_map or {}
@@ -293,7 +521,7 @@ async def full_exhaustive_scan(
         # Batch sleep
         time.sleep(10.0)
     # ML for nitpicking: Isolation Forest to find "unusual" high-potential setups from the factor space
-    if len(features_for_ml) > 5:
+    if _HAS_SKLEARN and len(features_for_ml) > 5:
         try:
             X = np.array([f + [0]*(10-len(f)) for f in features_for_ml])
             scaler = StandardScaler()

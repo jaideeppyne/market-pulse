@@ -1,21 +1,11 @@
-import type { Market, Row, Snapshot } from '../types'
+import type { Market, MarketFilter, Row, UiState, FactorBreakdownItem, SmartMoneyHit, InvestorEvent } from '../types'
 
 export const DISPLAY_LIMIT = 220
 
-type MarketFilter = Market | 'all'
-type UiFilters = {
-  search?: string
-  earlyOnly?: boolean
-  whaleOnly?: boolean
-  sectorFilter?: string | null
-  sortBy?: string
-}
-
-type SnapshotWithDiscoveries = Partial<Snapshot> & { discoveries?: Row[] }
-
 export function marketOf(row: Partial<Row> = {}): Market {
   const sym = String(row.symbol || '').toUpperCase()
-  if (row.market || row.metrics?.market) return row.market || row.metrics?.market
+  const market = row.market || row.metrics?.market
+  if (market === 'india' || market === 'uk' || market === 'us') return market
   if (sym.endsWith('.NS') || sym.endsWith('.BO')) return 'india'
   if (sym.endsWith('.L')) return 'uk'
   return 'us'
@@ -37,8 +27,9 @@ export function qualityScore(row: Partial<Row> = {}) {
 }
 
 export function factorsDisplay(row: Partial<Row> = {}) {
-  const total = Number(row.factors_total ?? row.metrics?.factors_total ?? row.factor_breakdown?.length ?? 0)
-  const hit = Number(row.factors_hit ?? row.metrics?.factors_hit ?? (row.factor_breakdown || []).filter((f) => f.status === 'pass').length)
+  const breakdown = row.factor_breakdown || row.metrics?.factor_breakdown || []
+  const total = Number(row.factors_total ?? row.metrics?.factors_total ?? breakdown.length ?? 0)
+  const hit = Number(row.factors_hit ?? row.metrics?.factors_hit ?? breakdown.filter((f) => f.status === 'pass').length)
   return { hit, total }
 }
 
@@ -50,11 +41,11 @@ export function hasSmartMoney(row: Partial<Row> = {}) {
 
 export function buyTier(score = 0) {
   const s = Number(score || 0)
-  if (s >= 85) return ['buy-sp', 'S+']
-  if (s >= 70) return ['buy-a', 'A']
-  if (s >= 55) return ['buy-b', 'B']
-  if (s >= 40) return ['buy-c', 'C']
-  return ['buy-d', 'D']
+  if (s >= 85) return ['buy-sp', 'S+'] as const
+  if (s >= 70) return ['buy-a', 'A'] as const
+  if (s >= 55) return ['buy-b', 'B'] as const
+  if (s >= 40) return ['buy-c', 'C'] as const
+  return ['buy-d', 'D'] as const
 }
 
 export function confTier(score = 0) {
@@ -71,7 +62,7 @@ export function rvolTier(v = 0) {
   return 'lo'
 }
 
-export function getHotPool(data: SnapshotWithDiscoveries = {}, marketFilter: MarketFilter = 'all'): Row[] {
+export function getHotPool(data: { hot?: Row[]; hot_by_market?: Partial<Record<Market, Row[]>>; discoveries?: Row[] } = {}, marketFilter: MarketFilter = 'all') {
   const pools = [
     ...(data.hot || []),
     ...((data.hot_by_market && data.hot_by_market.us) || []),
@@ -79,8 +70,8 @@ export function getHotPool(data: SnapshotWithDiscoveries = {}, marketFilter: Mar
     ...((data.hot_by_market && data.hot_by_market.uk) || []),
     ...(data.discoveries || []),
   ]
-  const seen = new Set()
-  const deduped = []
+  const seen = new Set<string>()
+  const deduped: Row[] = []
   for (const row of pools) {
     if (!row?.symbol || seen.has(row.symbol)) continue
     seen.add(row.symbol)
@@ -90,7 +81,7 @@ export function getHotPool(data: SnapshotWithDiscoveries = {}, marketFilter: Mar
   return deduped
 }
 
-export function filterAndSort(rows: Row[] = [], ui: UiFilters = {}) {
+export function filterAndSort(rows: Row[] = [], ui: Partial<UiState> = {}) {
   const q = String(ui.search || '').trim().toUpperCase()
   const filtered = rows.filter((row) => {
     const m = row.metrics || {}
@@ -104,7 +95,7 @@ export function filterAndSort(rows: Row[] = [], ui: UiFilters = {}) {
     return true
   })
   const sortBy = ui.sortBy || 'score'
-  const value = (row) => {
+  const value = (row: Row) => {
     const m = row.metrics || {}
     if (sortBy === 'quality') return qualityScore(row)
     if (sortBy === 'factors') return factorsDisplay(row).hit
@@ -115,7 +106,7 @@ export function filterAndSort(rows: Row[] = [], ui: UiFilters = {}) {
   return [...filtered].sort((a, b) => value(b) - value(a))
 }
 
-export function timeAgo(input) {
+export function timeAgo(input?: string) {
   if (!input) return 'now'
   const t = new Date(input).getTime()
   if (!Number.isFinite(t)) return ''
@@ -127,4 +118,138 @@ export function timeAgo(input) {
   if (hr < 24) return `${hr}h`
   const d = Math.floor(hr / 24)
   return `${d}d`
+}
+
+// ---- Plain-English verdict (added) ----------------------------------------
+export type Verdict = { text: string; tone: 'good' | 'caution' | 'watch' | 'neutral' }
+
+export function verdict(row: Partial<Row> = {}): Verdict {
+  const m = row.metrics || {}
+  const buy = rankScore(row)
+  const qual = qualityScore(row)
+  const extPen = Number((m as any).extension_penalty ?? 0)
+  const extended = Boolean((m as any).is_extended) || extPen >= 10
+  const smart = hasSmartMoney(row)
+  const hasQual = qual > 0
+  if (buy >= 70 && hasQual && qual >= 70 && !extended)
+    return { text: 'High quality and ready — strong entry', tone: 'good' }
+  if (buy >= 60 && extended)
+    return { text: 'Strong setup, but extended — wait for a pullback', tone: 'caution' }
+  if (hasQual && qual >= 70 && buy < 60)
+    return { text: 'High quality, early entry — building, not yet extended', tone: 'watch' }
+  if (buy >= 60 && hasQual && qual < 50)
+    return smart
+      ? { text: 'Speculative — smart-money driven, thin on fundamentals', tone: 'caution' }
+      : { text: 'Momentum-led — light on the quality checklist', tone: 'caution' }
+  if (buy >= 70) return { text: 'Strong buy rank — clearing on entry timing', tone: 'good' }
+  if (smart) return { text: 'Smart-money interest — watch for confirmation', tone: 'watch' }
+  if (buy >= 45) return { text: 'Developing setup — keep on the radar', tone: 'watch' }
+  return { text: 'Weak setup — little edge right now', tone: 'neutral' }
+}
+
+export function topReasons(row: Partial<Row> = {}, n = 3): { reasons: FactorBreakdownItem[]; risk: FactorBreakdownItem | null } {
+  const breakdown = (row.factor_breakdown || []) as FactorBreakdownItem[]
+  const passed = breakdown
+    .filter((f) => f.status === 'pass')
+    .sort((a, b) => Number(b.weighted_points || 0) - Number(a.weighted_points || 0))
+  const risks = breakdown.filter((f) => f.status === 'risk' || f.status === 'fail')
+  const risk = risks.find((f) => f.status === 'risk') || risks[0] || null
+  return { reasons: passed.slice(0, n), risk }
+}
+
+
+// ---- Company name display helpers ------------------------------------------
+// Returns the best human-readable company name for a row, or '' if none usable
+// (i.e. the name is missing or identical to the symbol).
+export function companyName(row: Partial<Row> = {}): string {
+  const sym = String(row.symbol || '').toUpperCase()
+  const raw = String((row.metrics?.name as string) || (row as { name?: string }).name || '').trim()
+  if (!raw) return ''
+  if (raw.toUpperCase() === sym) return ''
+  return raw
+}
+
+// Name to show in dense lists: falls back to sector, then market label.
+export function displayName(row: Partial<Row> = {}): string {
+  const nm = companyName(row)
+  if (nm) return nm
+  const sector = String(row.metrics?.sector || '').trim()
+  if (sector) return sector
+  return marketOf(row).toUpperCase()
+}
+
+// ---- Whale / smart-money enrichment helpers --------------------------------
+export interface WhaleView {
+  investor: string
+  type: string
+  typeLabel: string
+  action: string
+  conviction: string
+  recency: string
+  blurb: string
+  rank: number
+}
+
+const INVESTOR_TYPE_LABELS: Record<string, string> = {
+  india_legend: 'Legend',
+  us_legend: 'Legend',
+  legend: 'Legend',
+  politician_us: 'Politician',
+  politician_india: 'Politician',
+  politician: 'Politician',
+  foreign_india: 'FII',
+  fii: 'FII',
+  insider: 'Insider',
+  promoter: 'Promoter',
+  signal: 'Signal',
+}
+
+const CONVICTION_RANK: Record<string, number> = { 'S+': 4, S: 3, A: 2, B: 1 }
+
+export function investorTypeLabel(kind?: string): string {
+  const k = String(kind || '').toLowerCase().replace(/\s+/g, '_')
+  if (INVESTOR_TYPE_LABELS[k]) return INVESTOR_TYPE_LABELS[k]
+  if (k.includes('politician')) return 'Politician'
+  if (k.includes('legend')) return 'Legend'
+  if (k.includes('fii') || k.includes('foreign')) return 'FII'
+  if (k.includes('insider')) return 'Insider'
+  if (k.includes('promoter')) return 'Promoter'
+  return k ? k.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Smart money'
+}
+
+// Normalise a backend whale hit (or investor event) into a uniform view model,
+// gracefully tolerating missing/older fields.
+export function whaleView(
+  hit: Partial<SmartMoneyHit & InvestorEvent> = {},
+  fallbackText = '',
+): WhaleView {
+  const investor =
+    hit.investor_name || hit.display_name || hit.actor_name || hit.name || 'Smart money'
+  const rawType = hit.investor_type || hit.kind || hit.event_type || ''
+  const typeLabel = investorTypeLabel(rawType)
+  const action = String(hit.action || '').trim()
+  const conviction = String(hit.conviction_tier || hit.conviction || hit.tier || '').toUpperCase()
+  const recencyStr = hit.recency || timeAgo(hit.seen_at || hit.ts)
+  const blurb = String(
+    hit.why_it_matters || hit.why || hit.blurb || hit.quality || hit.headline ||
+    hit.details || fallbackText || '',
+  ).trim()
+  const rank = (CONVICTION_RANK[conviction] || 0) * 1000 + recencyScore(hit.seen_at || hit.ts)
+  return {
+    investor: String(investor),
+    type: String(rawType),
+    typeLabel,
+    action,
+    conviction,
+    recency: recencyStr === 'now' ? 'just now' : recencyStr,
+    blurb,
+    rank,
+  }
+}
+
+// Higher = more recent. Used as a secondary sort key.
+function recencyScore(ts?: string): number {
+  if (!ts) return 0
+  const t = new Date(ts).getTime()
+  return Number.isFinite(t) ? t / 1e9 : 0
 }

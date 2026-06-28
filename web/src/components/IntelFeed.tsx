@@ -1,6 +1,8 @@
-import { useSelector, useDispatch } from 'react-redux'
 import { selectSymbol } from '../store/uiSlice'
 import { timeAgo } from '../lib/format'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import type { CSSProperties } from 'react'
+import type { ClientAlert } from '../types'
 
 const STYLE = {
   high_score: { accent: '#34D77F', iconbg: 'rgba(34,197,94,.14)', icon: '📈' },
@@ -12,8 +14,8 @@ const STYLE = {
 const DEFAULT = { accent: '#38BDF8', iconbg: 'rgba(56,189,248,.14)', icon: '⚡' }
 
 export default function IntelFeed() {
-  const dispatch = useDispatch()
-  const alerts = useSelector((s) => s.live.alerts)
+  const dispatch = useAppDispatch()
+  const alerts = useAppSelector((s) => s.live.alerts)
 
   return (
     <div>
@@ -21,14 +23,19 @@ export default function IntelFeed() {
         <h3>Intelligence Feed</h3>
         <span className="intel__viewall">{alerts.length} signals</span>
       </div>
+      <p className="intel__note" title="Alerts are generated in the browser while this tab is open">
+        <span className="intel__note-dot" /> Live alerts fire only while this tab is open. Email / Telegram delivery isn’t enabled yet.
+      </p>
       <div className="intel__feed">
         {alerts.slice(0, 14).map((a, i) => {
-          const st = STYLE[a.type] || DEFAULT
+          const st = STYLE[a.type as keyof typeof STYLE] || DEFAULT
+          const style = { '--accent': st.accent, '--iconbg': st.iconbg } as CSSProperties
           return (
             <div
               key={i}
               className="feed-alert"
-              style={{ '--accent': st.accent, '--iconbg': st.iconbg }}
+              style={style}
+              title={(a.symbol ? a.symbol + ' — ' : '') + (a.msg || a.type || 'Signal')}
               onClick={() => a.symbol && dispatch(selectSymbol(a.symbol))}
             >
               <span className="fa-icon">{st.icon}</span>

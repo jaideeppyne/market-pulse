@@ -9,7 +9,9 @@ retention:
   scan_snapshots_keep_days: 3
   # Max snapshot rows per symbol (extra guard against bloat)
   max_snapshots_per_symbol: 30
-  # Reclaim disk after deletes (runs weekly when cleanup runs)
+  # Reclaim disk after deletes. With auto_vacuum=INCREMENTAL this is now a cheap
+  # incremental page release each cycle; a full VACUUM only runs when the freelist
+  # is large (legacy DBs). See scripts/compact_db.py for one-time migration.
   vacuum_on_cleanup: true
 
 earnings:
@@ -30,15 +32,27 @@ scanner:
   news_scan_interval_sec: 90
   # Rank hot list by buy_score (entry-first). quality_score kept for reference.
   ranking_mode: buy_score
-  # Symbols per market per live scan pass. Uses the configured universe (not fixed tickers); 0 means all.
-  live_symbols_per_market: 0
+  # Symbols per market per live scan pass. Bounded by default to prevent provider bursts/rate-limit cascades;
+  # watchlist and event-led symbols are always prioritized ahead of this rotating background window.
+  live_symbols_per_market: 50
   # Symbols per batch for yfinance (avoid rate limits). For more aggressive live coverage raise batch carefully + add delay.
-  batch_size: 40
+  batch_size: 22
   batch_delay_sec: 0.35
   # Minimum buy_score to appear in hot list (weighted scoring — typically 35–50)
   hot_score_threshold: 25
+
+  # --- Snapshot write-gating (DB-bloat control) ---
+  # Only persist a scan_snapshots row when a symbol is meaningful, instead of every
+  # symbol every scan. A row is written when ANY of: score >= snapshot_min_score,
+  # OR score moved >= snapshot_min_score_delta vs the last stored row for that symbol,
+  # OR it's been >= snapshot_min_interval_sec since this symbol was last stored.
+  # Rows below snapshot_floor_score are never stored (noise floor).
+  snapshot_min_score: 50          # high-conviction rows always kept
+  snapshot_min_interval_sec: 600  # at most ~1 row / symbol / 10 min otherwise
+  snapshot_min_score_delta: 5     # material score change forces a write
+  snapshot_floor_score: 40        # below this, never snapshot
   # How many top movers to broadcast (per market + global cap)
-  top_n: 200
+  top_n: 140
   # Official insider/CEO/promoter scanner interval (15-30s target for fastest detection per review)
   insider_scan_interval_sec: 30
 
@@ -47,7 +61,7 @@ scanner:
   discovery_batch_size: 20
   discovery_delay_sec: 0.25
   # Max extra symbols to pull from the big multi-source pool (wiki scrapes + huge static + data/*.txt) per discovery click.
-  discovery_extra_per_call: 200
+  discovery_extra_per_call: 120
   discovery_min_score: 32
 
 markets:
@@ -70,159 +84,30 @@ markets:
 
 news:
   max_headlines_per_feed: 50
+  # Server-friendly sources only. Many news-site RSS endpoints 403/404 from
+  # datacenter IPs; Google News RSS aggregates them, and the Yahoo per-symbol
+  # RSS backbone (added in the crawler) gives reliable, pre-matched headlines.
+  yahoo_per_symbol: true
+  yahoo_symbols_per_cycle: 24
   feeds:
-    # Core curated RSS (reliable but limited — anyone can subscribe to these manually)
-    - name: "CNBC Top News"
-      url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114"
-      market: "us"
-    - name: "CNBC Earnings"
-      url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=15839069"
-      market: "us"
-    - name: "Moneycontrol Markets"
-      url: "https://www.moneycontrol.com/rss/latestnews.xml"
-      market: "india"
-    - name: "Economic Times Markets"
-      url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
-      market: "india"
-    - name: "Yahoo Finance"
-      url: "https://finance.yahoo.com/news/rssindex"
-      market: "global"
-    - name: "Reuters Business"
-      url: "https://feeds.reuters.com/reuters/businessNews"
-      market: "global"
-    - name: "MarketWatch Top"
-      url: "https://feeds.marketwatch.com/marketwatch/topstories/"
-      market: "us"
-    - name: "Investing.com India"
-      url: "https://www.investing.com/rss/news_301.rss"
-      market: "india"
-    - name: "Business Standard Markets"
-      url: "https://www.business-standard.com/rss/markets-106.rss"
-      market: "india"
-    - name: "Livemint Markets"
-      url: "https://www.livemint.com/rss/markets"
-      market: "india"
-    - name: "Financial Express"
-      url: "https://www.financialexpress.com/market/rss/"
-      market: "india"
-
-    # Google News RSS — this pulls aggregated headlines from *thousands* of sites across the web
-    # (the "impossible to manually search everywhere" part). Targeted queries surface catalysts,
-    # earnings, smart-money mentions etc. that a hand-curated 5-10 feed list would miss.
-    - name: "Google News US - Earnings & Catalysts"
-      url: "https://news.google.com/rss/search?q=earnings+OR+%22results+today%22+OR+%22beats+estimates%22+OR+%22price+target%22+OR+upgrade+when:1d&hl=en-US&gl=US&ceid=US:en"
+    - name: "Google News US - Markets & Earnings"
+      url: "https://news.google.com/rss/search?q=(stock+market+OR+earnings+OR+%22results+today%22+OR+upgrade+OR+%22price+target%22)+when:1d&hl=en-US&gl=US&ceid=US:en"
       market: "us"
     - name: "Google News India - Markets & Results"
-      url: "https://news.google.com/rss/search?q=earnings+OR+results+OR+%22block+deal%22+OR+promoter+OR+FII+OR+%22QIP%22+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
+      url: "https://news.google.com/rss/search?q=(Sensex+OR+Nifty+OR+earnings+OR+results+OR+%22block+deal%22+OR+promoter+OR+FII)+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
       market: "india"
-    # Next-level India earnings scraping - multiple sites for better .NS coverage
-    - name: "Moneycontrol Results"
-      url: "https://www.moneycontrol.com/rss/results.xml"
+    - name: "Google News UK - Shares"
+      url: "https://news.google.com/rss/search?q=(FTSE+OR+shares+OR+earnings)+UK+when:1d&hl=en-GB&gl=GB&ceid=GB:en"
+      market: "uk"
+    - name: "Google News - Earnings Calendar"
+      url: "https://news.google.com/rss/search?q=(%22to+report+earnings%22+OR+%22Q1+results%22+OR+%22Q2+results%22+OR+%22board+meeting%22+OR+%22to+announce+results%22)+when:3d&hl=en-IN&gl=IN&ceid=IN:en"
       market: "india"
-    - name: "Economic Times Earnings"
-      url: "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"
-      market: "india"
-    - name: "Business Standard Corporate"
-      url: "https://www.business-standard.com/rss/corporate-6.rss"
-      market: "india"
-    - name: "Google News India - Earnings Calendar"
-      url: "https://news.google.com/rss/search?q=%22results+on%22+OR+%22Q1+results%22+OR+%22Q2+results%22+OR+%22earnings+today%22+OR+%22to+announce+results%22+when:3d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-    - name: "Google News - Smart Money & Whales"
-      url: "https://news.google.com/rss/search?q=(buffett+OR+berkshire+OR+ackman+OR+icahn+OR+%22cathie+wood%22+OR+ark+OR+jhunjhunwala+OR+kacholia+OR+kela+OR+damani)+ (buy+OR+bought+OR+stake+OR+accumulat)+when:1d&hl=en-US&gl=US&ceid=US:en"
+    - name: "Google News - Smart Money and Whales"
+      url: "https://news.google.com/rss/search?q=(buffett+OR+berkshire+OR+icahn+OR+ackman+OR+%22cathie+wood%22+OR+jhunjhunwala+OR+kacholia+OR+kela+OR+damani)+(buys+OR+bought+OR+stake+OR+accumulat)+when:2d&hl=en-US&gl=US&ceid=US:en"
       market: "global"
-    - name: "Google News - Policy & Contracts"
-      url: "https://news.google.com/rss/search?q=(PLI+OR+%22make+in+india%22+OR+defence+order+OR+contract+award+OR+tender+OR+%22govt+approves%22)+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-
-    # Additional high-signal wires / specialist feeds (press releases, analysis)
-    - name: "Seeking Alpha Market Currents"
-      url: "https://seekingalpha.com/feed/market_currents.xml"
-      market: "us"
-    - name: "Benzinga"
-      url: "https://feeds.benzinga.com/benzinga/news"
-      market: "us"
-    - name: "PR Newswire - Latest"
-      url: "https://www.prnewswire.com/rss/all-news-releases-from-PRNewswire.rss"
+    - name: "Yahoo Finance Headlines"
+      url: "https://finance.yahoo.com/news/rssindex"
       market: "global"
-
-    # India-focused additional websites for live scanning (increased for all India stocks coverage)
-    - name: "Moneycontrol Corporate"
-      url: "https://www.moneycontrol.com/rss/corporate.xml"
-      market: "india"
-    - name: "Economic Times Stocks"
-      url: "https://economictimes.indiatimes.com/markets/stocks/rssfeeds/2146842.cms"
-      market: "india"
-    - name: "Business Standard India"
-      url: "https://www.business-standard.com/rss/home_page-top_stories.rss"
-      market: "india"
-    - name: "Livemint Markets"
-      url: "https://www.livemint.com/rss/markets"
-      market: "india"
-    - name: "Financial Express Markets"
-      url: "https://www.financialexpress.com/market/rss/"
-      market: "india"
-    - name: "Business Today India"
-      url: "https://www.businesstoday.in/rss/rssstory.jsp?sid=1"
-      market: "india"
-    - name: "Google News India - FII DII Flows"
-      url: "https://news.google.com/rss/search?q=FII+OR+DII+OR+%22foreign+institutional%22+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-    - name: "Google News India - Block Deals QIP"
-      url: "https://news.google.com/rss/search?q=%22block+deal%22+OR+QIP+OR+promoter+OR+%22bulk+deal%22+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-    - name: "Google News India - Results Earnings"
-      url: "https://news.google.com/rss/search?q=%22Q1+results%22+OR+%22Q2+results%22+OR+%22Q3+results%22+OR+%22Q4+results%22+OR+earnings+India+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-    - name: "NSE India Announcements RSS"
-      url: "https://www.nseindia.com/api/announcements"
-      market: "india"  # Note: may need parsing, falls back to broad
-    - name: "BSE India News"
-      url: "https://www.bseindia.com/rss/rss.xml"
-      market: "india"
-    - name: "Reuters India Business"
-      url: "https://feeds.reuters.com/reuters/INbusinessNews"
-      market: "india"
-    - name: "CNBC TV18 India"
-      url: "https://www.cnbctv18.com/rss"
-      market: "india"
-    # Even more India websites for live info fetching (earnings, FII, deals, results, corporate news)
-    - name: "Moneycontrol Latest"
-      url: "https://www.moneycontrol.com/rss/latestnews.xml"
-      market: "india"
-    - name: "Economic Times Markets"
-      url: "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms"
-      market: "india"
-    - name: "Business Standard Markets"
-      url: "https://www.business-standard.com/rss/markets-106.rss"
-      market: "india"
-    - name: "Livemint Latest"
-      url: "https://www.livemint.com/rss/news"
-      market: "india"
-    - name: "Financial Express Corporate"
-      url: "https://www.financialexpress.com/industry/rss/"
-      market: "india"
-    - name: "Business Today Stocks"
-      url: "https://www.businesstoday.in/rss/stocks"
-      market: "india"
-    - name: "CNBC TV18 Markets"
-      url: "https://www.cnbctv18.com/rss/markets"
-      market: "india"
-    - name: "Google News India - All Catalysts"
-      url: "https://news.google.com/rss/search?q=India+stocks+OR+NSE+OR+BSE+earnings+OR+results+OR+FII+OR+block+deal+when:1d&hl=en-IN&gl=IN&ceid=IN:en"
-      market: "india"
-    - name: "Reuters India Markets"
-      url: "https://feeds.reuters.com/reuters/INtopNews"
-      market: "india"
-    - name: "BSE Announcements"
-      url: "https://www.bseindia.com/rss/rssannounce.xml"
-      market: "india"
-    - name: "NSE India Market Update"
-      url: "https://www.nseindia.com/api/marketStatus"
-      market: "india"  # Note: API, parser handles as text if RSS-like
-    - name: "Moneycontrol FII DII"
-      url: "https://www.moneycontrol.com/rss/fiidii.xml"
-      market: "india"
 
 signals:
   # buy_score = entry-heavy (next buy). quality_score = all factors.

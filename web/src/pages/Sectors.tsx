@@ -32,7 +32,7 @@ export default function Sectors() {
         <div className="sector-list">
           {sectors.length === 0 && <p className="muted">No sector data yet — waiting for scan.</p>}
           {sectors.map((s: any) => (
-            <div key={s.sector} className={'sector-row' + (sel === s.sector ? ' active' : '')} onClick={() => setSel(s.sector)}>
+            <div key={s.sector} className={'sector-row' + (sel === s.sector ? ' active' : '')} title={`Show top picks in ${s.sector}`} onClick={() => setSel(s.sector)}>
               <div className="sector-name">{s.sector}</div>
               <div className="sector-counts">{s.stock_count ?? 0} stocks · {s.hot_count ?? 0} hot · {s.early_buy_count ?? 0} early</div>
               {(s.rotation || s.cycle_label) && <div className="sector-badges"><span className="rotation-tag">{s.rotation || s.cycle_label}</span></div>}
@@ -48,8 +48,11 @@ export default function Sectors() {
                 <thead><tr><th>Symbol</th><th>Buy</th><th>Day%</th></tr></thead>
                 <tbody>
                   {(active.top_picks || active.stocks || []).slice(0, 20).map((p: any, i: number) => (
-                    <tr key={i} onClick={() => dispatch(selectSymbol(p.symbol))} className="sector-hot-btn">
-                      <td className={!p.metrics?.is_extended ? 'pick-early' : ''}>{p.symbol}</td>
+                    <tr key={i} onClick={() => dispatch(selectSymbol(p.symbol))} className="sector-hot-btn" title={`Open ${p.symbol}${p.metrics?.name && p.metrics.name !== p.symbol ? ' (' + p.metrics.name + ')' : ''}`}>
+                      <td className={!p.metrics?.is_extended ? 'pick-early' : ''}>
+                        {p.symbol}
+                        {p.metrics?.name && p.metrics.name !== p.symbol ? (<><br /><span className="sym__name">{p.metrics.name}</span></>) : null}
+                      </td>
                       <td>{p.metrics?.buy_score ?? p.buy_score ?? p.score ?? '—'}</td>
                       <td>{p.metrics?.day_chg_pct ?? p.day_chg_pct ?? '—'}%</td>
                     </tr>

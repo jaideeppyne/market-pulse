@@ -17,6 +17,11 @@ DB_PATH = Path(os.getenv("DB_PATH", _default_db))
 async def init_db() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
+        # Incremental auto_vacuum lets retention cleanup release freed pages cheaply
+        # instead of doing a full-file VACUUM rewrite every cycle. On a brand-new DB
+        # this takes effect immediately; on a legacy DB it needs a one-time VACUUM
+        # (handled by run_retention_cleanup / scripts/compact_db.py).
+        await db.execute("PRAGMA auto_vacuum=INCREMENTAL")
         await db.executescript(
             """
             CREATE TABLE IF NOT EXISTS news (
@@ -39,6 +44,20 @@ async def init_db() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_news_published ON news(published_at DESC);
             CREATE INDEX IF NOT EXISTS idx_snap_symbol ON scan_snapshots(symbol, created_at DESC);
+
+            -- Persistent ad-hoc analysis cache. Keeps search/detail instant and protects
+            -- upstream providers with stale-while-revalidate semantics.
+            CREATE TABLE IF NOT EXISTS symbol_analysis_cache (
+                symbol TEXT PRIMARY KEY,
+                market TEXT,
+                payload TEXT NOT NULL,
+                provider_status TEXT,
+                fetched_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                stale_until TEXT NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_symbol_analysis_cache_expiry ON symbol_analysis_cache(expires_at);
             CREATE TABLE IF NOT EXISTS earnings (
                 symbol TEXT PRIMARY KEY,
                 market TEXT NOT NULL,
@@ -195,14 +214,186 @@ async def insert_news(
             return False
 
 
+# Per-factor keys we keep when persisting. Everything else (name/description/label/
+# category/weight/tier/weighted_points) is STATIC and rejoinable from
+# app.engine.factor_catalog at read time, so it must NOT be stored on every row.
+_FACTOR_KEEP_KEYS = ("id", "status", "points")
+
+# Heavy/duplicate sub-structures inside ``metrics`` that no stored-payload reader
+# consumes (they duplicate the top-level factor_breakdown or carry transient
+# market_events / verbose enriched views). Dropped to keep rows small while
+# preserving the scalar metrics + smart_money that /api/edge and rule eval read.
+_METRICS_DROP_KEYS = (
+    "factor_breakdown",
+    "factor_details",
+    "market_events",
+    "top_weighted_factors",
+    "signals",
+)
+
+# Top-level scalar keys that downstream readers (/api/edge, recent_strong_snapshots,
+# recent_strong_snapshots_with_outcomes) rely on. These are always preserved.
+_SNAPSHOT_KEEP_SCALARS = (
+    "symbol",
+    "market",
+    "score",
+    "buy_score",
+    "quality_score",
+    "confidence_score",
+    "factors_hit",
+    "factors_total",
+    "data_quality",
+)
+
+
+def slim_snapshot_payload(payload: dict) -> dict:
+    """Return a compact, persistence-only copy of a scan payload.
+
+    Keeps the scalar fields + metrics that /api/edge and snapshot readers consume.
+    For factors, keeps only id/status/points (static labels/descriptions/categories
+    are rejoinable from app.engine.factor_catalog). Drops the per-row sparkline and
+    the verbose factor_details (a duplicate enriched view) which are not needed for
+    backtest/edge or score-history reads.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    slim: dict = {}
+    for k in _SNAPSHOT_KEEP_SCALARS:
+        if k in payload:
+            slim[k] = payload[k]
+    # metrics carries smart_money.hits (read by /api/edge) + rvol/buy_score etc.
+    # Strip the heavy duplicate factor structures + transient market_events nested
+    # inside it (these are the real per-row bloat and are not read back).
+    metrics = payload.get("metrics")
+    if isinstance(metrics, dict):
+        slim["metrics"] = {
+            k: v for k, v in metrics.items() if k not in _METRICS_DROP_KEYS
+        }
+    elif metrics is not None:
+        slim["metrics"] = metrics
+    # Slim the factor breakdown to id/status/points only.
+    fb = payload.get("factor_breakdown") or payload.get("factor_details") or []
+    if fb:
+        slim_fb = []
+        for f in fb:
+            if not isinstance(f, dict):
+                continue
+            slim_fb.append({k: f[k] for k in _FACTOR_KEEP_KEYS if k in f})
+        slim["factor_breakdown"] = slim_fb
+    return slim
+
+
 async def insert_snapshot(symbol: str, market: str, payload: dict, score: float) -> None:
+    """Persist a compact snapshot. The full payload is slimmed before storage to keep
+    scan_snapshots small (sparkline + static factor labels/descriptions are dropped)."""
+    slim = slim_snapshot_payload(payload)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             """
             INSERT INTO scan_snapshots (symbol, market, payload, score)
             VALUES (?, ?, ?, ?)
             """,
-            (symbol, market, json.dumps(payload), score),
+            (symbol, market, json.dumps(slim, separators=(",", ":")), score),
+        )
+        await db.commit()
+
+
+async def latest_snapshot_payloads(symbols: list[str], *, max_age_hours: int = 24) -> dict[str, dict]:
+    """Latest persisted scanner payloads for live-scan fallback/last-good recovery."""
+    if not symbols:
+        return {}
+    cutoff = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+    placeholders = ",".join("?" for _ in symbols)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            f"""
+            SELECT symbol, market, score, payload, created_at
+            FROM scan_snapshots
+            WHERE symbol IN ({placeholders}) AND created_at >= ?
+            ORDER BY symbol, created_at DESC
+            """,
+            (*symbols, cutoff),
+        )
+        out: dict[str, dict] = {}
+        for r in await cur.fetchall():
+            sym = r["symbol"]
+            if sym in out:
+                continue
+            try:
+                payload = json.loads(r["payload"] or "{}")
+            except Exception:
+                payload = {}
+            if payload:
+                payload.setdefault("symbol", sym)
+                payload.setdefault("market", r["market"])
+                payload["stale"] = True
+                payload["provider_status"] = "last_good_snapshot"
+                payload["last_good_at"] = r["created_at"]
+                out[sym] = payload
+        return out
+
+
+async def get_symbol_analysis_cache(symbol: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            """
+            SELECT symbol, market, payload, provider_status, fetched_at, expires_at, stale_until
+            FROM symbol_analysis_cache
+            WHERE symbol = ?
+            """,
+            (symbol,),
+        )
+        r = await cur.fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        try:
+            d["payload"] = json.loads(d.get("payload") or "{}")
+        except Exception:
+            d["payload"] = {}
+        return d
+
+
+async def upsert_symbol_analysis_cache(
+    symbol: str,
+    market: str,
+    payload: dict,
+    *,
+    provider_status: str = "fresh",
+    ttl_seconds: int = 900,
+    stale_seconds: int = 86400,
+) -> None:
+    now = datetime.now(timezone.utc)
+    fetched_at = now.isoformat()
+    expires_at = (now + timedelta(seconds=ttl_seconds)).isoformat()
+    stale_until = (now + timedelta(seconds=stale_seconds)).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """
+            INSERT INTO symbol_analysis_cache (
+                symbol, market, payload, provider_status, fetched_at, expires_at, stale_until, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                market=excluded.market,
+                payload=excluded.payload,
+                provider_status=excluded.provider_status,
+                fetched_at=excluded.fetched_at,
+                expires_at=excluded.expires_at,
+                stale_until=excluded.stale_until,
+                updated_at=excluded.updated_at
+            """,
+            (
+                symbol,
+                market,
+                json.dumps(payload),
+                provider_status,
+                fetched_at,
+                expires_at,
+                stale_until,
+                fetched_at,
+            ),
         )
         await db.commit()
 
@@ -417,7 +608,47 @@ async def run_retention_cleanup(
         await db.commit()
 
         if vacuum:
-            await db.execute("VACUUM")
+            # Lightweight reclaim strategy (avoid the heavy full-file rewrite/lock
+            # that VACUUM does every cycle). Prefer incremental auto_vacuum:
+            #   1) Ensure auto_vacuum=INCREMENTAL is set (takes effect after a one-time
+            #      full VACUUM on a legacy DB created with auto_vacuum=NONE).
+            #   2) Each cycle, run incremental_vacuum to release freed pages cheaply.
+            #   3) Only fall back to a full VACUUM when the freelist is very large
+            #      (legacy DB still in auto_vacuum=NONE), and cap how often.
+            try:
+                cur = await db.execute("PRAGMA auto_vacuum")
+                av_mode = (await cur.fetchone() or [0])[0]
+            except Exception:
+                av_mode = 0
+            try:
+                cur = await db.execute("PRAGMA freelist_count")
+                freelist = (await cur.fetchone() or [0])[0]
+                cur = await db.execute("PRAGMA page_count")
+                page_count = (await cur.fetchone() or [1])[0] or 1
+            except Exception:
+                freelist, page_count = 0, 1
+            free_ratio = freelist / page_count if page_count else 0.0
+            stats["freelist_pages"] = int(freelist)
+
+            if av_mode == 2:
+                # Incremental auto_vacuum active: cheap, non-locking page release.
+                try:
+                    await db.execute("PRAGMA incremental_vacuum")
+                    await db.commit()
+                    stats["vacuum_mode"] = "incremental"
+                except Exception:
+                    stats["vacuum_mode"] = "incremental_failed"
+            else:
+                # Legacy DB (auto_vacuum=NONE). Switch the pragma so future inserts
+                # track free pages, then only do the heavy full VACUUM when the
+                # freelist is large (>15% of file). A one-time full VACUUM is also
+                # what makes the new auto_vacuum mode take effect.
+                await db.execute("PRAGMA auto_vacuum=INCREMENTAL")
+                if free_ratio >= 0.15 or freelist > 20000:
+                    await db.execute("VACUUM")
+                    stats["vacuum_mode"] = "full"
+                else:
+                    stats["vacuum_mode"] = "skipped_small_freelist"
 
     stats["db_size_mb"] = round(db_file_size_mb(), 2)
     return stats

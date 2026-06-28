@@ -8,7 +8,7 @@ import pandas as pd
 
 from app.engine.news_intel import NewsIntel, analyze_news_titles
 from app.engine.smart_money_intel import SmartMoneyIntel, analyze_smart_money
-from app.engine.sector_rules import pe_pb_thresholds, sector_bucket
+from app.engine.sector_rules import pe_pb_thresholds, sector_bucket, resolve_sector
 
 
 @dataclass
@@ -39,7 +39,7 @@ class ScanContext:
 
     def __post_init__(self):
         self._compute_price()
-        self.sector = self.info.get("sector") or ""
+        self.sector = self.info.get("sector") or resolve_sector(self.symbol, self.market) or ""
         self.industry = self.info.get("industry") or ""
         self.bucket = sector_bucket(self.sector, self.industry, self.market)
         self.val_thresholds = pe_pb_thresholds(self.bucket, self.market)

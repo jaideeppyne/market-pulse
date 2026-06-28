@@ -143,3 +143,39 @@ def test_live_price_scan_pairs_come_from_configured_universe_not_hardcoded_core(
     assert ("ZZZ", "us") in pairs
     assert ("RELIANCE.NS", "india") in pairs
     assert ("BP.L", "uk") in pairs
+
+
+def test_live_price_scan_prioritizes_watchlist_and_event_symbols_before_rotating_universe():
+    from app.state import AppState
+    from app.workers.scanner_loop import ScannerLoop
+
+    state = AppState()
+    state.universe = {
+        "us": ["AAPL", "MSFT", "NVDA"],
+        "india": ["RELIANCE.NS", "TCS.NS"],
+        "uk": ["BP.L", "SHEL.L"],
+    }
+    state.watches = [{"symbol": "NVDA"}, {"symbol": "BP.L"}]
+    scanner = ScannerLoop({"scanner": {"live_symbols_per_market": 1}}, state)
+
+    pairs = scanner._build_live_scan_pairs({"TCS.NS": [{"market": "india"}]})
+
+    assert pairs[:3] == [("NVDA", "us"), ("BP.L", "uk"), ("TCS.NS", "india")]
+    assert ("RELIANCE.NS", "india") in pairs
+    assert ("AAPL", "us") in pairs
+
+
+def test_symbol_analysis_cache_roundtrip_with_ttl_metadata(tmp_path):
+    from app import db
+
+    db.DB_PATH = tmp_path / "market_pulse.db"
+    run(db.init_db())
+    payload = {"symbol": "AAPL", "score": 80, "metrics": {"buy_score": 80}}
+
+    run(db.upsert_symbol_analysis_cache("AAPL", "us", payload, provider_status="stooq", ttl_seconds=60, stale_seconds=3600))
+    cached = run(db.get_symbol_analysis_cache("AAPL"))
+
+    assert cached is not None
+    assert cached["payload"] == payload
+    assert cached["provider_status"] == "stooq"
+    assert cached["expires_at"] < cached["stale_until"]

@@ -30,7 +30,7 @@ function EdgeInner() {
         <div className="guide-card span-2">
           <h3>Backtest Edge / Historical Performance</h3>
           <p>Real backtesting from scan snapshots + forward returns (1d/3d/7d/14d). Hit rates by score bucket + confidence breakdowns + factor performance.</p>
-          <button className="btn-secondary small" onClick={() => trigger()} disabled={isFetching} style={{ marginTop: 8 }}>
+          <button className="btn-secondary small" title="Load / refresh historical backtest edge statistics" onClick={() => trigger()} disabled={isFetching} style={{ marginTop: 8 }}>
             {isFetching ? 'Loading…' : 'Load / Refresh live Edge stats'}
           </button>
           <div className="edge-results">

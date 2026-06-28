@@ -1,24 +1,25 @@
-import { useSelector, useDispatch } from 'react-redux'
 import { useAnalyzeQuery } from '../store/api'
 import { closeFactors, setFactorFilter } from '../store/uiSlice'
 import { factorsDisplay } from '../lib/format'
+import { useAppDispatch, useAppSelector } from '../store/hooks'
+import type { FactorBreakdownItem, FactorFilter, Row } from '../types'
 
 const CAT_ORDER = ['momentum', 'technicals', 'fundamentals', 'catalyst', 'smart_money', 'risk', 'other']
 
 export default function FactorModal() {
-  const dispatch = useDispatch()
-  const sym = useSelector((s) => s.ui.factorSymbol)
-  const filter = useSelector((s) => s.ui.factorFilter)
-  const liveRow = useSelector((s) => {
+  const dispatch = useAppDispatch()
+  const sym = useAppSelector((s) => s.ui.factorSymbol)
+  const filter = useAppSelector((s) => s.ui.factorFilter)
+  const liveRow = useAppSelector((s) => {
     if (!sym || !s.live.data) return null
-    const pools = [...(s.live.data.hot || []), ...((s.live.data.hot_by_market?.us) || []), ...((s.live.data.hot_by_market?.india) || [])]
+    const pools = [...(s.live.data.hot || []), ...((s.live.data.hot_by_market?.us) || []), ...((s.live.data.hot_by_market?.india) || []), ...((s.live.data.hot_by_market?.uk) || [])]
     return pools.find((r) => r.symbol === sym) || null
   })
   const needFetch = !!sym && (!liveRow || !liveRow.factor_breakdown)
-  const { data: fetched, isFetching } = useAnalyzeQuery(sym, { skip: !needFetch })
+  const { data: fetched, isFetching } = useAnalyzeQuery(sym || '', { skip: !needFetch })
   if (!sym) return null
 
-  const row = (fetched && fetched.symbol) ? fetched : liveRow
+  const row: Row | null = (fetched && fetched.symbol) ? fetched : liveRow
   const breakdown = row?.factor_breakdown || row?.metrics?.factor_breakdown || []
   const passed = breakdown.filter((x) => x.status === 'pass')
   const failed = breakdown.filter((x) => x.status === 'fail')
@@ -30,7 +31,7 @@ export default function FactorModal() {
   else if (filter === 'fail') list = failed
   else if (filter === 'risk') list = risk
 
-  const byCat = {}
+  const byCat: Record<string, FactorBreakdownItem[]> = {}
   for (const f of list) (byCat[f.category || 'other'] ||= []).push(f)
   const cats = Object.keys(byCat).sort((a, b) => {
     const ia = CAT_ORDER.indexOf(a); const ib = CAT_ORDER.indexOf(b)
@@ -43,18 +44,25 @@ export default function FactorModal() {
       <div className="modal-panel factors" role="dialog" aria-label="Factor breakdown">
         <header className="modal-header">
           <div>
-            <h2>Factor breakdown <span style={{ color: '#38BDF8', fontFamily: 'var(--mono)', fontSize: 13 }}>{sym}</span></h2>
+            <h2>Factor breakdown <span style={{ color: '#C15F3C', fontFamily: 'var(--mono)', fontSize: 13 }}>{sym}</span></h2>
             <p className="modal-sub">
-              <span style={{ color: '#34D77F' }}>{passed.length} passed</span> · <span style={{ color: '#F5B544' }}>{risk.length} risk</span> · <span style={{ color: '#EF4444' }}>{failed.length} failed</span> · {hit}/{total} applicable
+              <span style={{ color: '#15803D' }}>{passed.length} passed</span> · <span style={{ color: '#B45309' }}>{risk.length} risk</span> · <span style={{ color: '#DC2626' }}>{failed.length} failed</span> · {hit}/{total} applicable
             </p>
           </div>
-          <button type="button" className="modal-close" onClick={() => dispatch(closeFactors())} aria-label="Close">
+          <button type="button" className="modal-close" title="Close factor breakdown" onClick={() => dispatch(closeFactors())} aria-label="Close">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
           </button>
         </header>
         <div className="modal-toolbar">
           {['all', 'pass', 'fail', 'risk'].map((f) => (
-            <button key={f} type="button" className={'filter-pill' + (filter === f ? ' active' : '')} onClick={() => dispatch(setFactorFilter(f))}>
+            <button
+              key={f}
+              type="button"
+              className={'filter-pill' + (filter === f ? ' active' : '')}
+              title={f === 'all' ? 'Show every factor' : f === 'pass' ? 'Show only passing factors' : f === 'fail' ? 'Show only failing factors' : 'Show only risk flags'}
+              aria-pressed={filter === f}
+              onClick={() => dispatch(setFactorFilter(f as FactorFilter))}
+            >
               {f === 'all' ? 'All' : f === 'pass' ? 'Passed' : f === 'fail' ? 'Failed' : 'Risk flags'}
             </button>
           ))}

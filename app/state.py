@@ -141,6 +141,13 @@ class AppState:
             self.hot_score_threshold = threshold
             for r in results:
                 self.symbols[r["symbol"]] = r
+            # Bound the in-memory symbol cache so it can't grow without limit and
+            # OOM the free 512MB instance. Keep the highest-ranked names (what the
+            # UI actually surfaces); dropped ones simply re-fetch on demand.
+            _CAP = 1000
+            if len(self.symbols) > _CAP:
+                kept = sorted(self.symbols.items(), key=lambda kv: self._buy_rank(kv[1]), reverse=True)[:_CAP]
+                self.symbols = dict(kept)
             self._rebuild_hot_lists()
             now = datetime.now(timezone.utc).isoformat()
             self.scan_generation += 1

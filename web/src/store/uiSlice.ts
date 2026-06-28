@@ -1,7 +1,9 @@
 import { createSlice } from '@reduxjs/toolkit'
+import type { PayloadAction } from '@reduxjs/toolkit'
+import type { FactorFilter, MarketFilter, SortBy, UiState } from '../types'
 
-const initialState = {
-  marketFilter: 'all',   // all | us | india
+const initialState: UiState = {
+  marketFilter: 'all',   // all | us | india | uk
   earlyOnly: false,
   whaleOnly: false,
   sectorFilter: null,
@@ -17,21 +19,21 @@ const uiSlice = createSlice({
   name: 'ui',
   initialState,
   reducers: {
-    setMarketFilter: (s, a) => { s.marketFilter = a.payload },
+    setMarketFilter: (s, a: PayloadAction<MarketFilter>) => { s.marketFilter = a.payload },
     toggleEarly: (s) => { s.earlyOnly = !s.earlyOnly },
     toggleWhale: (s) => { s.whaleOnly = !s.whaleOnly },
-    setSectorFilter: (s, a) => { s.sectorFilter = a.payload },
-    setSortBy: (s, a) => { s.sortBy = a.payload },
-    setSearch: (s, a) => { s.search = a.payload },
-    selectSymbol: (s, a) => { s.selectedSymbol = a.payload },
-    openFactors: (s, a) => { s.factorSymbol = a.payload; s.factorFilter = 'all' },
+    setSectorFilter: (s, a: PayloadAction<string | null>) => { s.sectorFilter = a.payload },
+    setSortBy: (s, a: PayloadAction<SortBy>) => { s.sortBy = a.payload },
+    setSearch: (s, a: PayloadAction<string>) => { s.search = a.payload },
+    selectSymbol: (s, a: PayloadAction<string | null>) => { s.selectedSymbol = a.payload },
+    openFactors: (s, a: PayloadAction<string>) => { s.factorSymbol = a.payload; s.factorFilter = 'all' },
     closeFactors: (s) => { s.factorSymbol = null },
-    setFactorFilter: (s, a) => { s.factorFilter = a.payload },
+    setFactorFilter: (s, a: PayloadAction<FactorFilter>) => { s.factorFilter = a.payload },
     resetFilters: (s) => {
       s.marketFilter = 'all'; s.earlyOnly = false; s.whaleOnly = false
       s.sectorFilter = null; s.search = ''
     },
-    toast: (s, a) => { s.toast = a.payload },
+    toast: (s, a: PayloadAction<unknown>) => { s.toast = a.payload },
   },
 })
 

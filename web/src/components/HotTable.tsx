@@ -1,7 +1,7 @@
 import { selectSymbol, openFactors } from '../store/uiSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
 import { useAddWatchMutation, useAddPositionMutation, useAnalyzeQuery } from '../store/api'
-import { getHotPool, filterAndSort, rankScore, confTier, rvolTier, marketOf, factorsDisplay, CURRENCY, DISPLAY_LIMIT } from '../lib/format'
+import { getHotPool, filterAndSort, rankScore, confTier, rvolTier, marketOf, factorsDisplay, verdict, displayName, CURRENCY, DISPLAY_LIMIT } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
 import MarketBadge from './ui/MarketBadge'
@@ -27,7 +27,9 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   const mkt = marketOf(row)
   const cur = CURRENCY[mkt] || '$'
   const { hit, total } = factorsDisplay(row)
+  const nm = displayName(row)
   const reason = m.smart_money?.primary_alert || (row.alerts || [])[0] || m.sector
+  const vd = verdict(row)
 
   const watch = (e: React.MouseEvent) => { e.stopPropagation(); addWatch({ symbol: sym }); toast.push(`★ ${sym} added to My List`, 'success') }
   const paper = (e: React.MouseEvent) => {
@@ -38,16 +40,16 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
   }
 
   return (
-    <tr className={selected ? 'selected' : ''} onClick={() => dispatch(selectSymbol(sym))}>
+    <tr className={selected ? 'selected' : ''} title={`Open full analysis for ${sym}${nm ? ' (' + nm + ')' : ''}`} onClick={() => dispatch(selectSymbol(sym))}>
       <td className="col-sym">
         <div className="sym">
           <MarketBadge market={mkt} />
           <button className="tiny tiny-watch" title="Add to My List" onClick={watch}>☆</button>
           <button className="tiny" title="One-click paper buy" onClick={paper}>📁</button>
           <span className="sym-main">
-            <span className="sym__ticker">{sym}</span>
-            {m.price != null && <span className={'sym__price ' + dayCls}>{cur}{m.price}</span>}
-            <br /><span className="sym__name">{m.name || m.sector || mkt.toUpperCase()}</span>
+            <span className="sym__ticker" title={`${sym}${nm ? ' — ' + nm : ''}`}>{sym}</span>
+            {m.price != null && <span className={'sym__price ' + dayCls} title="Last traded price">{cur}{m.price}</span>}
+            <br /><span className="sym__name" title={nm}>{nm}</span>
           </span>
         </div>
       </td>
@@ -55,13 +57,14 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
       <td className="col-cats">
         <div className="cats__badges">
           <CatalystBadges row={row} score={buy} />
-          <button className="factor-pill" title="View factors" onClick={(e) => { e.stopPropagation(); dispatch(openFactors(sym)) }}>{hit}/{total}</button>
+          <button className="factor-pill" title={`${hit} of ${total} weighted factors passing — click for the full checklist`} onClick={(e) => { e.stopPropagation(); dispatch(openFactors(sym)) }}>{hit}/{total}</button>
         </div>
+        <div className={'verdict verdict--' + vd.tone} title="Plain-English read of Buy vs Quality score">{vd.text}</div>
         {reason && <div className="cats__reason">{reason}</div>}
       </td>
-      <td className="col-rvol"><span className={'rvol ' + rvolTier(m.rvol)}>{m.rvol != null ? m.rvol + '×' : '—'}</span></td>
-      <td className="col-conf">{m.confidence_score == null ? <span className="muted">—</span> : <span className={'conf ' + confTier(m.confidence_score)}>{m.confidence_score}</span>}</td>
-      <td className="col-day"><span className={'day ' + dayCls}>{day > 0 ? '▲ +' : day < 0 ? '▼ ' : ''}{day}%</span></td>
+      <td className="col-rvol"><span className={'rvol ' + rvolTier(m.rvol)} title="Relative volume vs its own average — &gt;2× means unusually active">{m.rvol != null ? m.rvol + '×' : '—'}</span></td>
+      <td className="col-conf">{m.confidence_score == null ? <span className="muted">—</span> : <span className={'conf ' + confTier(m.confidence_score)} title="Confidence in the setup (data quality + signal agreement)">{m.confidence_score}</span>}</td>
+      <td className="col-day"><span className={'day ' + dayCls} title="Change since previous close">{day > 0 ? '▲ +' : day < 0 ? '▼ ' : ''}{day}%</span></td>
       <td className="col-buy">
         <BuyScorePill score={buy} quality={m.quality_score ?? '—'} onClick={(e) => { e.stopPropagation(); dispatch(openFactors(sym)) }} />
       </td>

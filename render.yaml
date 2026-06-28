@@ -9,8 +9,9 @@ services:
     envVars:
       - key: PYTHONUNBUFFERED
         value: "1"
-    disk:
-      name: market-pulse-data
-      mountPath: /app/data
-      sizeGB: 1
+      # Free tier = 512MB RAM + sleeps on idle. Tune scanners lighter.
+      - key: PRICE_SCAN_INTERVAL_SEC
+        value: "300"
+      - key: HOT_SCORE_THRESHOLD
+        value: "45"
     autoDeploy: true

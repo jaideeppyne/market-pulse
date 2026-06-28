@@ -1,6 +1,8 @@
 import { createSlice } from '@reduxjs/toolkit'
+import type { PayloadAction } from '@reduxjs/toolkit'
+import type { ClientAlert, LiveState, Row, ServerAlert, Snapshot } from '../types'
 
-const initialState = {
+const initialState: LiveState = {
   status: 'connecting',  // connecting | live | down
   data: null,            // full snapshot payload
   alerts: [],            // accumulated alert feed (newest first)
@@ -8,7 +10,7 @@ const initialState = {
   lastGeneration: -1,
 }
 
-function hasSmartMoney(r) {
+function hasSmartMoney(r: Row) {
   const sm = r?.metrics?.smart_money
   if (sm?.hits?.length) return true
   return (r?.alerts || []).some((a) => /LEGEND|WHALE|POLITICIAN|FOREIGN BUY|SMART MONEY/i.test(a))
@@ -16,15 +18,16 @@ function hasSmartMoney(r) {
 
 // Derive client-side alerts from a snapshot's hot list (high conviction / smart money),
 // mirroring the legacy behaviour so the Intelligence Feed populates live.
-function deriveAlerts(state, data) {
+function deriveAlerts(state: LiveState, data: Snapshot) {
   const hot = [
     ...(data.hot || []),
     ...((data.hot_by_market && data.hot_by_market.us) || []),
     ...((data.hot_by_market && data.hot_by_market.india) || []),
+    ...((data.hot_by_market && data.hot_by_market.uk) || []),
   ]
   const now = new Date().toISOString()
   for (const r of hot) {
-    const score = r.buy_score ?? r.score ?? (r.metrics && r.metrics.buy_score) ?? 0
+    const score = Number(r.buy_score ?? r.score ?? (r.metrics && r.metrics.buy_score) ?? 0)
     const key = r.symbol
     if (!key) continue
     if (score >= 78 && !state.seen['high:' + key]) {
@@ -56,13 +59,13 @@ const liveSlice = createSlice({
   name: 'live',
   initialState,
   reducers: {
-    wsStatus: (s, a) => { s.status = a.payload },
-    snapshotReceived: (s, a) => {
+    wsStatus: (s, a: PayloadAction<LiveState['status']>) => { s.status = a.payload },
+    snapshotReceived: (s, a: PayloadAction<Snapshot>) => {
       s.data = a.payload
       deriveAlerts(s, a.payload)
       s.lastGeneration = a.payload.scan_generation ?? s.lastGeneration
     },
-    alertReceived: (s, a) => {
+    alertReceived: (s, a: PayloadAction<ServerAlert & Partial<ClientAlert>>) => {
       const al = a.payload
       const k = 'push:' + al.symbol + ':' + (al.message || al.msg || '')
       if (s.seen[k]) return

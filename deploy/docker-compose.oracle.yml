@@ -1,27 +1,45 @@
-version: '3.8'
-
+# Market Pulse — Oracle Cloud Always Free compose.
+#
+# Notes:
+#  * `build: ..` because this file lives in deploy/; the Docker build context is
+#    the repo root (where the Dockerfile + requirements.txt + frontend/ live).
+#  * The DB is stored in a NAMED volume mounted at /app/data and the app is told
+#    to use /app/data/market_pulse.db via DB_PATH, so history survives reboots
+#    and `up --build` rebuilds.
+#  * Scanner intervals are env-var overrides actually honored by app/config.py
+#    (PORT, HOT_SCORE_THRESHOLD, PRICE_SCAN_INTERVAL_SEC). Other intervals live
+#    in config.yaml; the mounted config below is the place to tune them.
+#  * MARKET_PULSE_WRITE_KEY locks down mutating endpoints for a public box.
 services:
   market-pulse:
-    build: .
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: market-pulse:oracle
     container_name: market-pulse
     restart: unless-stopped
     ports:
       - "8765:8765"
     volumes:
-      # Persistent named volume for the SQLite DB (news, snapshots, earnings)
+      # Persistent named volume for the SQLite DB (news, snapshots, earnings).
       - market_pulse_data:/app/data
-      # Optional: mount your local config if you want to edit it live
-      - ./config.yaml:/app/config.yaml:ro
+      # Mount your config read-only so you can tune scan intervals without rebuild.
+      - ../config.yaml:/app/config.yaml:ro
     environment:
       - TZ=UTC
-      # Oracle-friendly tuning (keeps CPU/network low on Always Free)
       - PORT=8765
-      - PRICE_SCAN_INTERVAL_SEC=180     # 3 minutes instead of 90s
-      - QUICK_PRICE_INTERVAL_SEC=90
-      - HOT_SCORE_THRESHOLD=42          # Slightly higher threshold
-      - NEWS_SCAN_INTERVAL_SEC=180
-      # You can override DB path if needed, but /app/data is fine with the volume
-      # - DB_PATH=/app/data/market_pulse.db
+      # Pin the DB onto the persistent volume (matches app/db.py DB_PATH override).
+      - DB_PATH=/app/data/market_pulse.db
+      # --- Oracle-friendly tuning (honored by app/config.py) ---
+      - PRICE_SCAN_INTERVAL_SEC=180     # full-universe price scan: 3 min (vs 90s)
+      - HOT_SCORE_THRESHOLD=42          # slightly higher hot-list bar
+      # --- PUBLIC-INSTANCE SECURITY (app/security.py + app/main.py) ---
+      # REQUIRED: set a long random secret here before exposing the box.
+      #   X-API-Key: <this value> is then required for any write/mutating call.
+      - MARKET_PULSE_WRITE_KEY=${MARKET_PULSE_WRITE_KEY:?set a strong MARKET_PULSE_WRITE_KEY in deploy/.env}
+      # CORS: same-origin only by default (SPA is served by this app). Add origins
+      # only if a separate frontend domain must call the API from a browser.
+      # - MARKET_PULSE_CORS_ORIGINS=https://market-pulse.example.com
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8765/api/health"]
       interval: 30s

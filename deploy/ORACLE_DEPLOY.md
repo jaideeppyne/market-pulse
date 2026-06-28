@@ -2,12 +2,17 @@
 
 This guide lets you get a **public, always-on** version of Market Pulse at zero cost using Oracle Cloud's generous Always Free tier.
 
+> For the full, copy-pasteable, non-expert runbook (including the no-SSH OCI
+> Cloud Shell path), see **[`../DEPLOY_OCI_RUNBOOK.md`](../DEPLOY_OCI_RUNBOOK.md)** at the repo root.
+> This file is the quick reference.
+
 ## Why Oracle Cloud?
 - Truly always-free (no expiration)
-- Powerful instances (up to 4 cores / 24 GB RAM on ARM)
-- 200 GB storage + 10 TB bandwidth
+- Ampere ARM instances: **2 OCPU / 12 GB RAM total** on the Always Free tier
+  (this dropped from 4 OCPU / 24 GB in June 2026 — older guides are stale)
+- 200 GB total block storage (boot + block combined) + 10 TB/month outbound
 - Full Docker support
-- Public IP included
+- Public IPv4 included
 
 ## Step 1: Create Oracle Cloud Account (One-time)
 
@@ -24,10 +29,10 @@ This guide lets you get a **public, always-on** version of Market Pulse at zero 
 1. In Oracle Console, go to **Compute → Instances → Create Instance**.
 2. Name it: `market-pulse`
 3. **Image**: Ubuntu 22.04 (or Oracle Linux 8/9)
-4. **Shape** (choose one that says **Always Free**):
-   - Best: `VM.Standard.A1.Flex` (Ampere ARM) — give it 4 OCPU and 24 GB RAM if available.
-   - Fallback: `VM.Standard.E2.1.Micro` (AMD)
-5. **Boot Volume**: 50 GB (or more, up to your free quota).
+4. **Shape** (choose one that shows the **Always Free-eligible** label):
+   - Best: `VM.Standard.A1.Flex` (Ampere ARM) — give it up to **2 OCPU and 12 GB RAM** (the Always Free max as of June 2026).
+   - Fallback: `VM.Standard.E2.1.Micro` (AMD, 1/8 OCPU + **1 GB RAM** — tight for this app; expect slow scans).
+5. **Boot Volume**: keep the default 50 GB (minimum is 47 GB). Do NOT push it toward 200 GB — that uses your entire free block-storage allotment in one instance.
 6. **Networking**: Use default VCN. Make sure **Assign a public IPv4 address** is enabled.
 7. Create the instance.
 
@@ -69,16 +74,25 @@ The script will:
 
 ## Step 5: Open the Port in Oracle (Critical!)
 
-Even after the script runs, traffic is blocked by default.
+Even after the script runs, traffic is blocked by **two** separate firewalls.
+The setup script already opens the **OS firewall** (firewalld/iptables) for you;
+you must still open the **OCI cloud firewall**:
 
-1. In Oracle Console, go to your Instance → **Attached VNIC** (click the name).
-2. Click **Security Lists** → edit the one that is attached (usually "Default Security List").
+1. In Oracle Console, open your Instance → click the **Subnet** under "Primary VNIC".
+2. Click the **Security List** (usually "Default Security List for ...").
 3. Click **Add Ingress Rules**.
 4. Fill:
+   - **Stateless**: leave unchecked (stateful).
    - **Source CIDR**: `0.0.0.0/0` (for public access) **or** your home IP for safety.
-   - **Protocol**: TCP
+   - **IP Protocol**: TCP
    - **Destination Port Range**: `8765`
 5. Save.
+
+> Note: Oracle Linux images ship with restrictive iptables, so the port MUST be
+> open in BOTH the OS firewall AND the Security List/NSG. The script handles the
+> OS side; if you reinstalled or skipped it, open it manually:
+> `sudo firewall-cmd --permanent --add-port=8765/tcp && sudo firewall-cmd --reload`
+> (or the iptables equivalent on minimal images).
 
 ## Step 6: Access Your Public Website
 
@@ -126,12 +140,32 @@ I can give you the exact `docker-compose` addition for Cloudflare Tunnel if you 
 ### Reduce Resource Usage Further
 The setup script already uses conservative values. You can make it even lighter by editing `config.yaml` or adding more env vars.
 
+## Cost & reclaim warnings (stay at $0)
+
+- **Idle reclaim**: Oracle may reclaim Always Free instances that are idle for 7
+  days (95th-percentile CPU <20% AND network <20%, plus memory <20% on ARM). This
+  app's always-on scanners keep CPU/network active, so a running Market Pulse is
+  not "idle". To be extra safe, convert the account to **Pay As You Go** — you are
+  still charged $0 as long as you stay within Always Free limits, and PAYG accounts
+  are exempt from idle reclamation.
+- **Block storage**: keep boot volume at ~50 GB. The free cap is 200 GB total
+  (boot + block combined). A 200 GB boot volume consumes the whole allotment.
+- **Outbound data**: 10 TB/month is free. A scanner + dashboard is nowhere near
+  this; only worry if you proxy large downloads through the box.
+- **Second VNIC / extra public IPs / load balancer beyond the one free flexible
+  LB**: avoid unless you know they're free.
+
 ## Troubleshooting
 
-- **Can't reach the site**: Double-check the Security List ingress rule for port 8765.
+- **Can't reach the site**: Check BOTH the OCI Security List ingress rule AND the
+  OS firewall (`sudo firewall-cmd --list-ports` or `sudo iptables -L INPUT -n`).
 - **Container not starting**: `docker logs market-pulse`
-- **Low resources**: The script already slows down the scanners. You can increase intervals more.
-- **ARM capacity error**: Try a different region or create a micro AMD instance first.
+- **Writes return 401/403**: that's expected on a public box — send the
+  `MARKET_PULSE_WRITE_KEY` (from `deploy/.env`) as the `X-API-Key` header.
+- **Low resources**: The compose already slows the scanners. Raise the intervals
+  further in `config.yaml` (mounted read-only) or via env in the compose.
+- **ARM "out of host capacity"**: try a different Availability Domain, retry later,
+  or upgrade to Pay As You Go (unlocks more capacity; still $0 within free limits).
 
 ## What You Get
 - Completely free public website

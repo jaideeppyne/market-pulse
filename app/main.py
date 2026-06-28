@@ -32,6 +32,7 @@ from app.db import (
     delete_alert_rule,
     evaluate_rules_for_snapshot,
     get_or_create_default_rules,
+    get_symbol_analysis_cache,
     init_db,
     insert_alert,
     list_alert_rules,
@@ -48,6 +49,7 @@ from app.db import (
     upcoming_earnings,
     update_alert_rule_last_triggered,
     update_portfolio_position,
+    upsert_symbol_analysis_cache,
     upsert_portfolio_position,
     delete_portfolio_position,
     get_performance_stats,
@@ -56,7 +58,8 @@ from app.engine.candidate_scanner import build_event_candidates
 from app.state import AppState
 from app.universe import build_universe
 from app.workers.scanner_loop import ScannerLoop
-from app.crawler.price_crawler import _fetch_batch
+from app.crawler.price_crawler import _fetch_batch_with_status
+from app import company_names
 from app.engine.signals import analyze_symbol
 
 logging.basicConfig(
@@ -108,6 +111,9 @@ NAME_TO_TICKER = {
 }
 
 
+_ANALYZE_INPUT_RE = re.compile(r"^[A-Za-z0-9.\-&^ ]{1,48}$")
+
+
 def _base_symbol(sym: str) -> str:
     s = str(sym or "").upper()
     for suffix in (".NS", ".BO", ".L"):
@@ -123,11 +129,6 @@ def resolve_analyze_symbol(symbol: str) -> ResolvedAnalyzeSymbol:
     raw = unquote(symbol).strip()
     upper = raw.upper()
     resolved = NAME_TO_TICKER.get(upper, upper)
-    if resolved == upper:
-        for alias, tkr in NAME_TO_TICKER.items():
-            if alias in upper or upper in alias:
-                resolved = tkr
-                break
     upper = resolved
 
     if upper.endswith((".NS", ".BO")):
@@ -469,9 +470,16 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
     that is used for every stock in the hot list).
     This powers the "analyze any stock" search box.
     """
+    _enforce_rate_limit(request, "analyze")
+    return await _analyze_impl(symbol, refresh)
+
+
+async def _analyze_impl(symbol: str, refresh: bool = False):
     from datetime import datetime, timezone
 
-    _enforce_rate_limit(request, "analyze")
+    raw_in = str(symbol or "").strip()
+    if not raw_in or len(raw_in) > 48 or not _ANALYZE_INPUT_RE.match(raw_in):
+        return {"error": "invalid ticker", "symbol": raw_in[:48]}
 
     resolved_symbol = resolve_analyze_symbol(symbol)
     raw = resolved_symbol.raw
@@ -540,6 +548,59 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
         hist, info, calendar = hit
     except Exception as e:
         logger.exception("Ad-hoc yf fetch failed for %s", raw)
+        return {"error": f"fetch failed: {e}", "symbol": raw}
+
+    if not refresh:
+        now = datetime.now(timezone.utc)
+        for sym in candidates:
+            cached = await get_symbol_analysis_cache(f"{resolved_symbol.market}:{sym}")
+            if not cached:
+                continue
+            payload = dict(cached.get("payload") or {})
+            if not payload:
+                continue
+            try:
+                expires_at = datetime.fromisoformat(str(cached.get("expires_at")).replace("Z", "+00:00"))
+                stale_until = datetime.fromisoformat(str(cached.get("stale_until")).replace("Z", "+00:00"))
+            except Exception:
+                continue
+            payload.setdefault("symbol", sym)
+            payload["cache_provider_status"] = cached.get("provider_status")
+            payload["cache_fetched_at"] = cached.get("fetched_at")
+            if now <= expires_at:
+                payload["cache_status"] = "fresh"
+                return payload
+            if now <= stale_until:
+                payload["cache_status"] = "stale_while_revalidate"
+                asyncio.create_task(_analyze_impl(norm_sym, refresh=True))
+                return payload
+
+    # Reuse the provider layer the live scanner uses
+    provider_status = "unknown"
+    try:
+        raw_map = await asyncio.to_thread(lambda: _fetch_batch_with_status([norm_sym], market, include_info=True))
+        hit = raw_map.get(norm_sym)
+        if not hit or hit[0] is None or len(hit[0]) < 5:
+            # try without forced suffix as last resort
+            raw_map = await asyncio.to_thread(lambda: _fetch_batch_with_status([upper], market, include_info=True))
+            hit = raw_map.get(upper) or raw_map.get(norm_sym)
+        if not hit or hit[0] is None or len(hit[0]) < 5:
+            cached = await get_symbol_analysis_cache(f"{market}:{norm_sym}") or await get_symbol_analysis_cache(f"{market}:{upper}")
+            payload = dict((cached or {}).get("payload") or {})
+            if payload:
+                payload["cache_status"] = "stale_provider_failed"
+                payload["cache_provider_status"] = (cached or {}).get("provider_status")
+                return payload
+            return {"error": "no data or invalid ticker", "symbol": raw, "tried": norm_sym}
+        hist, info, calendar, provider_status = hit
+    except Exception as e:
+        cached = await get_symbol_analysis_cache(f"{market}:{norm_sym}") or await get_symbol_analysis_cache(f"{market}:{upper}")
+        payload = dict((cached or {}).get("payload") or {})
+        if payload:
+            payload["cache_status"] = "stale_provider_exception"
+            payload["cache_provider_status"] = (cached or {}).get("provider_status")
+            return payload
+        logger.exception("Ad-hoc provider fetch failed for %s", raw)
         return {"error": safe_error_detail("fetch failed", e), "symbol": raw}
 
     # Gather best available news context (from the live broad crawlers including Google News)
@@ -567,7 +628,10 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
             for n in (snap.get("news") or [])[:60]:
                 t = (n.get("title") or "")
                 base = norm_sym.replace(".NS", "").replace(".BO", "")
-                if base in t.upper() or upper in t.upper() or norm_sym in t.upper():
+                up = t.upper()
+                def _wb(tok):
+                    return len(tok) >= 3 and re.search(r"\b" + re.escape(tok) + r"\b", up) is not None
+                if _wb(base) or _wb(upper) or norm_sym in up:
                     if t not in news_titles:
                         news_titles.append(t)
                     news_count = max(news_count, 1)
@@ -595,12 +659,7 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
         return {"error": safe_error_detail("analysis failed", e), "symbol": raw}
 
     # Build payload identical in shape to live scan results
-    company_name = (
-        (info or {}).get("longName")
-        or (info or {}).get("shortName")
-        or (info or {}).get("displayName")
-        or norm_sym
-    )
+    company_name = company_names.name_for(norm_sym, info)
     payload = {
         "symbol": norm_sym,
         "name": company_name,
@@ -614,12 +673,25 @@ async def api_symbol(symbol: str, request: Request, refresh: bool = False):
         "factor_details": sig.factor_details,
         "factor_breakdown": sig.factor_breakdown,
         "why_good_reasons": (sig.metrics or {}).get("reasons", [])[:8],
+        "criteria": (sig.metrics or {}).get("criteria", []),
+        "fulfilled_criteria_count": (sig.metrics or {}).get("fulfilled_criteria_count", 0),
         "fundamental_reasons_count": (sig.metrics or {}).get("fundamental_reasons_count", 0),
+        "deep_research": (sig.metrics or {}).get("deep_research"),
+        "thesis": (sig.metrics or {}).get("thesis"),
         "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()] if len(hist) > 0 else [],
         "ad_hoc": True,
         "identity_verified": _is_known_symbol(norm_sym, us_universe, india_universe, uk_universe) or _has_symbol_identity(norm_sym, info or {}),
+        "provider_status": provider_status,
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
     }
+
+    try:
+        payload["metrics"]["provider_status"] = provider_status
+        await upsert_symbol_analysis_cache(f"{market}:{norm_sym}", market, payload, provider_status=provider_status)
+        if upper != norm_sym:
+            await upsert_symbol_analysis_cache(f"{market}:{upper}", market, payload, provider_status=provider_status)
+    except Exception:
+        logger.debug("symbol analysis cache write failed for %s", norm_sym, exc_info=True)
 
     # Cache so that subsequent detail/factor views, clicks, and searches are instant
     # (until next full scanner pass overwrites or refresh requested)
@@ -642,6 +714,11 @@ async def api_news(limit: int = 80):
 @app.get("/api/watchlist")
 async def api_watchlist():
     watches = await list_watchlist()
+    for _w in watches:
+        try:
+            _w["name"] = company_names.name_for(_w.get("symbol", ""))
+        except Exception:
+            pass
     return {"watches": watches, "count": len(watches)}
 
 
@@ -736,6 +813,7 @@ async def _portfolio_payload() -> dict:
     for pos in positions:
         p = dict(pos)
         sym = p.get("symbol")
+        p["name"] = company_names.name_for(sym or "")
         row = symbols_cache.get(sym) or {}
         m = row.get("metrics") or {}
         current_price = m.get("price") or p.get("entry_price")
@@ -1245,13 +1323,21 @@ async def api_discover(request: Request, limit: int = 80, min_score: float = 32,
         m = p.get("metrics", {}) or {}
         fund_cnt = m.get("fundamental_reasons_count", 0) or 0
         cat_cnt = m.get("catalyst_reasons_count", 0) or 0
-        if p.get("market") == "india" and (fund_cnt + cat_cnt) >= 2:
+        fulfilled = m.get("fulfilled_criteria_count", 0) or 0
+        if p.get("market") == "india" and (fund_cnt + cat_cnt + fulfilled) >= 2:
             p["fundamental_strong_india"] = True
-            p["score"] = round((p.get("score", 0) or 0) + (fund_cnt + cat_cnt) * 1.1 , 1)
-            p["why_good_reasons"] = (m.get("reasons") or [])[:6]  # juice for UI: multiple not one
+            boost = (fund_cnt + cat_cnt + fulfilled) * 1.3
+            p["score"] = round((p.get("score", 0) or 0) + boost, 1)
+            p["why_good_reasons"] = (m.get("reasons") or [])[:6]
+            p["criteria"] = m.get("criteria", [])[:8]
+            p["deep_research"] = m.get("deep_research")
+            p["thesis"] = m.get("thesis")
+        # Extra India bias for pure fundamental quality even if lower overall score
+        if p.get("market") == "india" and fund_cnt >= 3:
+            p["score"] = round(p.get("score", 0) + 4, 1)  # further India fund boost
     discovered.sort(key=lambda x: (
         1 if x.get("market") == "india" and x.get("fundamental_strong_india") else 0,
-        x.get("metrics", {}).get("fundamental_reasons_count", 0),
+        x.get("metrics", {}).get("fundamental_reasons_count", 0) + x.get("metrics", {}).get("fulfilled_criteria_count", 0),
         x.get("metrics", {}).get("catalyst_reasons_count", 0),
         x.get("score", 0)
     ), reverse=True)

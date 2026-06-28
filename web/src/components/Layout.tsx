@@ -13,7 +13,7 @@ export default function Layout({ children }) {
           <div className="center__main">{children}</div>
         </div>
       </div>
-      <footer className="footer">Pulse Terminal · Market Pulse engine · US + India + UK scanner · Yahoo + RSS</footer>
+      <footer className="footer">Pulse Terminal · Market Pulse engine · US + India + UK scanner · Stooq/Yahoo fallback + RSS</footer>
     </>
   )
 }
