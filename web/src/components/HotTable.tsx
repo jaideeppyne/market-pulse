@@ -1,6 +1,6 @@
 import { selectSymbol, openFactors } from '../store/uiSlice'
 import { useAppDispatch, useAppSelector } from '../store/hooks'
-import { useAddWatchMutation, useAddPositionMutation } from '../store/api'
+import { useAddWatchMutation, useAddPositionMutation, useAnalyzeQuery } from '../store/api'
 import { getHotPool, filterAndSort, rankScore, confTier, rvolTier, marketOf, factorsDisplay, CURRENCY, DISPLAY_LIMIT } from '../lib/format'
 import { useToast } from '../context/ToastContext'
 import Sparkline from '../lib/Sparkline'
@@ -74,8 +74,15 @@ export default function HotTable() {
   const ui = useAppSelector((s) => s.ui)
   const selected = useAppSelector((s) => s.ui.selectedSymbol)
 
-  const pool = getHotPool(data || {}, ui.marketFilter)
-  const rows = filterAndSort(pool, ui).slice(0, DISPLAY_LIMIT)
+  const pool = getHotPool(data || {}, ui.marketFilter as any)
+  const selectedInPool = selected && pool.some((r) => r.symbol === selected)
+  const { data: analyzed } = useAnalyzeQuery(selected, { skip: !selected || selectedInPool })
+  const filteredRows = filterAndSort(pool, ui)
+  const analyzedRow = analyzed?.symbol && analyzed?.metrics && !analyzed?.error ? analyzed : null
+  const rows = [
+    ...(analyzedRow && !filteredRows.some((r) => r.symbol === analyzedRow.symbol) ? [analyzedRow] : []),
+    ...filteredRows,
+  ].slice(0, DISPLAY_LIMIT)
   const marketLabel = ui.marketFilter === 'all' ? 'all markets' : ui.marketFilter.toUpperCase()
 
   return (
