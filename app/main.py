@@ -337,6 +337,9 @@ async def lifespan(app: FastAPI):
         len(state.watches),
         len(await list_alert_rules()),
     )
+    # Seed curated quality universe so the homepage is valuable on first load,
+    # even before/without live prices (free, no network).
+    state.seed_quality_universe()
     scanner = ScannerLoop(cfg, state)
     scan_task = asyncio.create_task(scanner.start())
     bcast_task = asyncio.create_task(broadcast_loop())

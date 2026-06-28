@@ -117,6 +117,27 @@ class AppState:
             "research": research,
         }
 
+    def seed_quality_universe(self) -> None:
+        """Seed curated NSE/BSE quality picks so Hot Movers / Top Picks are never
+        empty when live prices are unavailable (Yahoo blocks datacenter IPs).
+        Live rows overwrite these per-symbol as real prices arrive."""
+        try:
+            from app.engine.quality_universe import quality_universe_map, enabled
+            if not enabled():
+                return
+            added = 0
+            for sym, row in quality_universe_map().items():
+                existing = self.symbols.get(sym)
+                # only seed if absent or the existing row is itself a (stale) seed
+                if existing is None or existing.get("source") == "quality_universe":
+                    self.symbols[sym] = row
+                    added += 1
+            self._rebuild_hot_lists()
+            self.stats["quality_universe_seeded"] = added
+            self.broadcast_event.set()
+        except Exception:
+            pass
+
     def _rebuild_hot_lists(self) -> None:
         threshold = self.hot_score_threshold
         top_n = self.hot_top_n

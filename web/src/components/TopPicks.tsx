@@ -30,7 +30,7 @@ function PickCard({ row }: { row: Row }) {
       <div className="pick-card__name" title={displayName(row)}>{displayName(row)}</div>
       <div className="pick-card__sym">
         <span className="pick-card__ticker">{row.symbol}</span>
-        {m.price != null && <span className="pick-card__price">{cur}{m.price}</span>}
+        {m.price != null ? <span className="pick-card__price">{cur}{m.price}</span> : <span className="pick-card__pending">live price pending</span>}
         <span className={'pick-card__day ' + dayCls}>{day > 0 ? '+' : ''}{day}%</span>
       </div>
       {tags.length > 0 && (
