@@ -863,3 +863,22 @@ button.tiny,.bell-btn,.search,.search__go,.search-menu__item,.modal-close,.facto
 @media (max-width:720px){.sp-grid{grid-template-columns:1fr 1fr;}.live-ticker{display:none;}}
 
 .pick-card__pending{font-size:11px;color:var(--muted,#9ca3af);font-style:italic;}
+
+/* ===== Curated stock intelligence: balanced research note ===== */
+.profile-note{margin:12px 0 6px;padding:13px 14px;border:1px solid var(--border,#ecdfd6);border-radius:14px;background:var(--surface,#fff);}
+.profile-arch{display:inline-block;font-size:11px;font-weight:800;letter-spacing:.2px;color:var(--accent,#d2674a);background:rgba(210,103,74,.10);border:1px solid rgba(210,103,74,.22);border-radius:999px;padding:3px 11px;margin-bottom:10px;}
+.profile-row{margin-bottom:11px;}
+.profile-row:last-child{margin-bottom:0;}
+.profile-row__label{display:block;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--muted,#8a7f76);margin-bottom:3px;}
+.profile-row p{margin:0;font-size:13px;line-height:1.5;color:var(--text,#3a322c);}
+.profile-row.watch .profile-row__label{color:#b45309;}
+.profile-watch{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:3px;}
+.profile-watch li{font-size:12.5px;line-height:1.45;color:#7c5e3b;}
+.profile-peers{display:flex;flex-wrap:wrap;gap:5px;}
+.peer-chip{font-size:11px;font-weight:600;color:var(--text,#3a322c);background:rgba(0,0,0,.04);border:1px solid var(--border,#ecdfd6);border-radius:6px;padding:2px 8px;}
+.profile-foot{margin-top:8px;font-size:11px;color:var(--muted,#9ca3af);font-style:italic;}
+
+/* Top Picks card: archetype + watch teaser */
+.pick-card__arch{font-size:10.5px;font-weight:700;color:var(--accent,#d2674a);background:rgba(210,103,74,.09);border-radius:6px;padding:2px 8px;align-self:flex-start;}
+.pick-card__watch{font-size:11.5px;line-height:1.4;color:#7c5e3b;background:rgba(180,83,9,.07);border:1px solid rgba(180,83,9,.15);border-radius:8px;padding:5px 9px;}
+.pick-watch__label{font-weight:800;color:#b45309;margin-right:6px;}

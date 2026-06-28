@@ -122,6 +122,55 @@ export default function DetailPanel() {
           </div>
         ) : null}
 
+        {research?.profile && (research.profile.biz || (research.profile.watch && research.profile.watch.length) || research.profile.valuation) ? (
+          <div className="profile-note">
+            {research.profile.archetype && (
+              <div className="profile-arch" title="What kind of stock this is">{research.profile.archetype}</div>
+            )}
+            {research.profile.biz && (
+              <div className="profile-row">
+                <span className="profile-row__label">The business</span>
+                <p>{research.profile.biz}</p>
+              </div>
+            )}
+            {research.profile.moat && (
+              <div className="profile-row">
+                <span className="profile-row__label">Edge / moat</span>
+                <p>{research.profile.moat}</p>
+              </div>
+            )}
+            {research.profile.watch && research.profile.watch.length > 0 && (
+              <div className="profile-row watch">
+                <span className="profile-row__label">⚠ What to watch</span>
+                <ul className="profile-watch">
+                  {research.profile.watch.map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+            )}
+            {research.profile.valuation && (
+              <div className="profile-row">
+                <span className="profile-row__label">Valuation read</span>
+                <p>{research.profile.valuation}</p>
+              </div>
+            )}
+            {research.profile.peers && research.profile.peers.length > 0 && (
+              <div className="profile-row">
+                <span className="profile-row__label">Compare with</span>
+                <div className="profile-peers">{research.profile.peers.map((p, i) => <span key={i} className="peer-chip">{p}</span>)}</div>
+              </div>
+            )}
+            {research.profile.ownership && (
+              <div className="profile-row">
+                <span className="profile-row__label">Ownership</span>
+                <p>{research.profile.ownership}</p>
+              </div>
+            )}
+            {research.profile._curated === false && (
+              <div className="profile-foot">General sector view — detailed profile coming for this name.</div>
+            )}
+          </div>
+        ) : null}
+
         {/* Fallback thesis from backend reasons when no graded research is available */}
         {!research && (((row as any).why_good_reasons && (row as any).why_good_reasons.length > 0) || ((row as any).criteria && (row as any).criteria.length > 0)) ? (
           <>

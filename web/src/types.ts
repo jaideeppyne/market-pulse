@@ -67,6 +67,17 @@ export interface ResearchGroup {
   reasons: string[]
 }
 
+export interface StockProfile {
+  biz?: string
+  archetype?: string
+  moat?: string
+  watch?: string[]
+  valuation?: string
+  peers?: string[]
+  ownership?: string
+  _curated?: boolean
+}
+
 export interface Research {
   grade?: string
   quality_score?: number
@@ -75,6 +86,8 @@ export interface Research {
   reason_count?: number
   groups?: ResearchGroup[]
   summary?: string
+  archetype?: string
+  profile?: StockProfile
 }
 
 export interface Row {

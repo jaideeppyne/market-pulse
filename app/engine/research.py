@@ -167,6 +167,18 @@ def build_research(row: dict[str, Any]) -> dict[str, Any]:
         else f"Grade {grade} — {total_reasons} supporting signals."
     )
 
+    # 6) curated intelligence (business, what-to-watch, valuation, peers, archetype)
+    profile = None
+    archetype = None
+    try:
+        from app.engine.stock_profiles import profile_for
+        _sector = m.get("sector") or row.get("sector")
+        profile = profile_for(sym, _sector)
+        if profile:
+            archetype = profile.get("archetype")
+    except Exception:
+        profile = None
+
     return {
         "grade": grade,
         "quality_score": quality_score,
@@ -175,4 +187,6 @@ def build_research(row: dict[str, Any]) -> dict[str, Any]:
         "reason_count": total_reasons,
         "groups": groups,
         "summary": summary,
+        "archetype": archetype,
+        "profile": profile,
     }

@@ -91,6 +91,12 @@ class AppState:
                 _rs = [str(x) for x in (_g.get("reasons") or [])[:3]]
                 if _rs:
                     _groups.append({"title": _g.get("title"), "reasons": _rs})
+            _prof = _res.get("profile") or {}
+            _prof_compact = {
+                "biz": _prof.get("biz"),
+                "archetype": _prof.get("archetype"),
+                "watch": (_prof.get("watch") or [])[:2],
+            } if _prof else None
             research = {
                 "grade": _res.get("grade"),
                 "quality_score": _res.get("quality_score"),
@@ -99,6 +105,8 @@ class AppState:
                 "reason_count": _res.get("reason_count"),
                 "groups": _groups,
                 "summary": _res.get("summary"),
+                "archetype": _res.get("archetype"),
+                "profile": _prof_compact,
             }
         else:
             research = None

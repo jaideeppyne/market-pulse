@@ -18,6 +18,8 @@ function PickCard({ row }: { row: Row }) {
   const dayCls = day >= 0 ? 'pos' : 'neg'
   const reasons = flatReasons(row, 3)
   const tags = (res?.tags || []).slice(0, 3)
+  const archetype = res?.archetype
+  const watch = (res?.profile?.watch || [])[0]
   const buy = Math.round(rankScore(row))
 
   return (
@@ -27,6 +29,7 @@ function PickCard({ row }: { row: Row }) {
         <MarketBadge market={mkt} />
         <span className="pick-card__buy" title="Buy score">{buy}</span>
       </div>
+      {archetype && <div className="pick-card__arch" title="What kind of stock this is">{archetype}</div>}
       <div className="pick-card__name" title={displayName(row)}>{displayName(row)}</div>
       <div className="pick-card__sym">
         <span className="pick-card__ticker">{row.symbol}</span>
@@ -43,6 +46,11 @@ function PickCard({ row }: { row: Row }) {
           <li key={i}><span className="pick-reason__grp">{r.group}</span>{r.text}</li>
         ))}
       </ul>
+      {watch && (
+        <div className="pick-card__watch" title="A risk worth knowing before you buy">
+          <span className="pick-watch__label">⚠ Watch</span>{watch}
+        </div>
+      )}
       {res?.reason_count && res.reason_count > reasons.length ? (
         <div className="pick-card__more">+{res.reason_count - reasons.length} more reasons →</div>
       ) : <div className="pick-card__more">See full breakdown →</div>}
