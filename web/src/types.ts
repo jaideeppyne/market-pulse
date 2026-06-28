@@ -44,6 +44,10 @@ export interface Row {
   symbol: string
   market?: Market
   score?: number
+  buy_score?: number
+  quality_score?: number
+  factors_hit?: number
+  factors_total?: number
   metrics?: Metrics
   alerts?: string[]
   sparkline?: number[]
@@ -53,6 +57,7 @@ export interface Row {
   earnings_soon?: boolean
   discovered?: boolean
   full_exhaustive?: boolean
+  ad_hoc?: boolean
 }
 
 export interface Snapshot {

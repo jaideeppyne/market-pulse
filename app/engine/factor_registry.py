@@ -148,6 +148,40 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
     dy = i.get("dividendYield")
     if dy and dy > 0.015:
         add("dividend_yield", "income", f"Div yield {dy*100:.2f}%", 1.5)
+    if dy and dy > 0.03:
+        add("high_dividend_yield", "income", f"High div yield {dy*100:.2f}%", 2.5)
+
+    # --- ADDITIONAL FUNDAMENTAL (NSE/BSE focus: promoter, FCF/profits/sales, valuations, backing) ---
+    # Promoter / insider (already partially covered; strengthen for India)
+    if ctx.market == "india":
+        ph = i.get("heldPercentInsiders") or i.get("promoterHolding")  # yf or fallback
+        if ph and ph > 0.50:
+            add("strong_promoter_holding", "ownership", f"Strong promoter holding {ph*100:.0f}% (alignment)", 3.5)
+        elif ph and ph > 0.35:
+            add("good_promoter_holding", "ownership", f"Good promoter holding {ph*100:.0f}%", 2.0)
+    # Strong sales/profits/FCF combo
+    rev_g = i.get("revenueGrowth") or 0
+    earn_g = i.get("earningsGrowth") or 0
+    if rev_g > 0.12 and earn_g > 0.12:
+        add("dual_growth_strong", "fundamental", f"Strong dual growth Rev {rev_g*100:.0f}% + Earn {earn_g*100:.0f}%", 3.0)
+    if i.get("totalRevenue") and i.get("grossProfits"):
+        gm = i.get("grossMargins") or (i.get("grossProfits", 0) / max(1, i["totalRevenue"]))
+        if gm > 0.40:
+            add("high_gross_profitability", "fundamental", "High gross profitability (leader potential)", 2.0)
+    # Cheaper valuations with quality (PEG + low PE + growth)
+    if peg and pe and peg < 1.0 and pe < 18 and earn_g > 0.10:
+        add("cheap_quality_valuation", "valuation", "Attractive PEG + reasonable PE with growth", 3.0)
+    # Market leader / scale proxy (revenue or mcap in context)
+    mcap = i.get("marketCap") or 0
+    if mcap > 200_000_000_000 and ctx.market == "india":  # rough large cap leader for India
+        add("india_large_cap_leader", "fundamental", "Large cap / segment leader scale in India", 1.5)
+    # Strong FII / institutional backing (India FII heavy)
+    inst = i.get("heldPercentInstitutions") or 0
+    if ctx.market == "india" and inst > 0.20:
+        add("strong_fii_institutional", "ownership", f"Strong institutional/FII backing {inst*100:.0f}%", 2.5)
+    # High dividend + sustainable (already payout; add coverage)
+    if dy and dy > 0.02 and i.get("payoutRatio", 1) < 0.6:
+        add("high_sustainable_dividend", "income", "High + sustainable dividend (payout safe)", 2.5)
     if ctx.dividend_days is not None and ctx.dividend_days <= 14:
         add(
             "dividend_upcoming",
@@ -164,6 +198,21 @@ def _hits(ctx: ScanContext) -> list[FactorHit]:
             add("earnings_3d", "calendar", f"Earnings in {d}d", 2.5, f"EARNINGS IN {d}D")
         elif d <= 7:
             add("earnings_7d", "calendar", f"Earnings in {d}d", 1.5)
+
+    # --- CATALYST / NEWS DRIVEN (orders, FII, dividends, promoter, huge backing) - for deep research publishing ---
+    news_upper = " ".join((ctx.news_titles or [])).upper()
+    if any(k in news_upper for k in [" ORDER", " CONTRACT", " BAGGED", " WINS ORDER", "SECURED ORDER", "LARGE ORDER"]):
+        add("huge_order_win", "catalyst", "Received huge order/contract (news catalyst)", 4.0, "HUGE ORDER")
+    if any(k in news_upper for k in ["FII", "FOREIGN INSTITUTIONAL", "FII BOUGHT", "FII INCREASED", "INSTITUTIONAL BUYING"]):
+        add("fii_strong_buying", "catalyst", "Strong FII / institutional buying reported", 3.0, "FII BACKING")
+    if any(k in news_upper for k in ["DIVIDEND", "DIV HIKED", "HIGH DIVIDEND", "DIVIDEND ANNOUNCED"]):
+        add("dividend_catalyst", "catalyst", "Dividend hike or high payout announced", 2.5)
+    if any(k in news_upper for k in ["PROMOTER", "PROMOTERS INCREASED", "PROMOTER BOUGHT", "INSIDER BUY"]):
+        add("promoter_confidence", "catalyst", "Promoter / insider buying (skin in game)", 3.5, "PROMOTER BUY")
+    if any(k in news_upper for k in ["RECORD PROFIT", "BEST QUARTER", "STRONG RESULTS", "BEAT ESTIMATES"]):
+        add("strong_earnings_catalyst", "catalyst", "Strong / record results or beat", 2.5)
+    if "BUYBACK" in news_upper or "SHARE BUYBACK" in news_upper:
+        add("buyback_signal", "catalyst", "Buyback or capital return program", 2.0)
 
     # --- TECHNICAL ---
     r = rsi(close)

@@ -12,10 +12,18 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import load_config
+from app.security import (
+    cors_settings,
+    limiter as _rate_limiter,
+    client_ip_from_scope,
+    is_local_exempt,
+    safe_error_detail,
+)
 from app.db import (
     DB_PATH,
     add_alert_rule,
@@ -136,6 +144,35 @@ def resolve_analyze_symbol(symbol: str) -> ResolvedAnalyzeSymbol:
         return ResolvedAnalyzeSymbol(raw=raw, normalized=normalized, market="india", candidates=[normalized])
 
     return ResolvedAnalyzeSymbol(raw=raw, normalized=upper, market="us", candidates=[upper])
+
+
+def _symbol_root(sym: str) -> str:
+    return re.sub(r"\.(NS|BO|L)$", "", (sym or "").upper())
+
+
+def _has_symbol_identity(sym: str, info: dict | None) -> bool:
+    """True when Yahoo metadata proves the downloaded history belongs to sym.
+
+    Yahoo occasionally returns usable-looking price history for malformed
+    tickers, especially while rate-limited. Known universe symbols can still be
+    trusted without this; unknown ad-hoc searches need identity metadata so the
+    UI does not show a fabricated analysis.
+    """
+    if not info:
+        return False
+    target = (sym or "").upper()
+    root = _symbol_root(target)
+    for key in ("symbol", "underlyingSymbol"):
+        val = str(info.get(key) or "").upper()
+        if val and (val == target or _symbol_root(val) == root):
+            return True
+    has_listing_meta = bool(info.get("quoteType") or info.get("exchange") or info.get("fullExchangeName"))
+    company_name = str(info.get("longName") or info.get("shortName") or info.get("displayName") or "").strip()
+    return has_listing_meta and bool(company_name) and company_name.upper() != target
+
+
+def _is_known_symbol(sym: str, *universes: set[str]) -> bool:
+    return any(sym in universe for universe in universes)
 
 
 async def _push_ws_update() -> None:
@@ -318,6 +355,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Market Pulse", version="1.0.0", lifespan=lifespan)
 
+# CORS: locked down by default (same-origin only). Set MARKET_PULSE_CORS_ORIGINS
+# to a comma-separated allow-list for the deployed browser origin(s). We never
+# combine "*" with credentials (see app/security.cors_settings).
+app.add_middleware(CORSMiddleware, **cors_settings())
+
 if FRONTEND.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
 
@@ -331,6 +373,26 @@ _RULE_TYPE_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,40}$")
 def _is_local_client(request: Request) -> bool:
     host = (request.client.host if request.client else "") or ""
     return host in {"127.0.0.1", "::1", "localhost", "testclient"}
+
+
+def _enforce_rate_limit(request: Request, bucket: str) -> None:
+    """Apply the per-client-IP rate limit for an expensive endpoint.
+
+    Local clients are exempt by default (configurable via
+    MARKET_PULSE_RATE_LIMIT_EXEMPT_LOCAL). Raises HTTP 429 with a Retry-After
+    header when the limit is exceeded.
+    """
+    if is_local_exempt() and _is_local_client(request):
+        return
+    host = request.client.host if request.client else None
+    client_ip = client_ip_from_scope(host, request.headers.get("x-forwarded-for"))
+    allowed, retry_after = _rate_limiter.check(bucket, client_ip)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="rate limit exceeded; please slow down",
+            headers={"Retry-After": str(int(retry_after) + 1)},
+        )
 
 
 def _assert_write_allowed(request: Request) -> None:
@@ -400,7 +462,7 @@ async def api_sectors():
 
 @app.get("/api/symbol/{symbol:path}")
 @app.get("/api/analyze/{symbol:path}")
-async def api_symbol(symbol: str, refresh: bool = False):
+async def api_symbol(symbol: str, request: Request, refresh: bool = False):
     """Get live scanner data for a symbol if present, otherwise perform a full
     on-demand analysis (hist + info + calendar + news context + the exact same
     100+ factor engine, scoring, smart money, entry/quality, sector rules, etc.
@@ -409,36 +471,76 @@ async def api_symbol(symbol: str, refresh: bool = False):
     """
     from datetime import datetime, timezone
 
+    _enforce_rate_limit(request, "analyze")
+
     resolved_symbol = resolve_analyze_symbol(symbol)
     raw = resolved_symbol.raw
     upper = resolved_symbol.normalized
     candidates = resolved_symbol.candidates
 
+    async with state.lock:
+        us_universe = set(state.universe.get("us", []))
+        india_universe = set(state.universe.get("india", []))
+        uk_universe = set(state.universe.get("uk", []))
+
     if not refresh:
         async with state.lock:
+            stale_ad_hoc: list[str] = []
             for sym in candidates:
                 data = state.symbols.get(sym)
                 if data:
-                    return data
+                    if (
+                        _is_known_symbol(sym, us_universe, india_universe, uk_universe)
+                        or not data.get("ad_hoc")
+                        or data.get("identity_verified")
+                    ):
+                        return data
+                    stale_ad_hoc.append(sym)
+            for sym in stale_ad_hoc:
+                state.symbols.pop(sym, None)
 
     # On-demand full analysis for any ticker (US, India, or UK)
     market = resolved_symbol.market
     norm_sym = resolved_symbol.normalized
 
-    # Reuse the exact same batch fetcher the live scanner uses
+    # Reuse the exact same batch fetcher the live scanner uses. Candidates are
+    # evaluated in priority order so plain US tickers do not get misrouted to
+    # India. The common case is a single candidate (no extra overhead); when
+    # several are tried we fetch them concurrently in threads and then walk the
+    # results in the original priority order, preserving identical behavior to
+    # the previous sequential loop while avoiding serial network round-trips.
+    def _cand_market(cand_sym: str) -> str:
+        return "india" if cand_sym.endswith((".NS", ".BO")) else "uk" if cand_sym.endswith(".L") else "us"
+
     try:
-        raw_map = await asyncio.to_thread(_fetch_batch, [norm_sym])
-        hit = raw_map.get(norm_sym)
+        if len(candidates) <= 1:
+            raw_maps = [await asyncio.to_thread(_fetch_batch, [c]) for c in candidates]
+        else:
+            raw_maps = await asyncio.gather(
+                *(asyncio.to_thread(_fetch_batch, [c]) for c in candidates)
+            )
+
+        hit = None
+        for cand_sym, raw_map in zip(candidates, raw_maps):
+            cand_hit = raw_map.get(cand_sym)
+            if cand_hit and cand_hit[0] is not None and len(cand_hit[0]) >= 5:
+                cand_info = cand_hit[1] or {}
+                if (
+                    not _is_known_symbol(cand_sym, us_universe, india_universe, uk_universe)
+                    and not _has_symbol_identity(cand_sym, cand_info)
+                ):
+                    logger.info("Rejected unverified ad-hoc symbol %s", cand_sym)
+                    continue
+                norm_sym = cand_sym
+                market = _cand_market(cand_sym)
+                hit = cand_hit
+                break
         if not hit or hit[0] is None or len(hit[0]) < 5:
-            # try without forced suffix as last resort
-            raw_map = await asyncio.to_thread(_fetch_batch, [upper])
-            hit = raw_map.get(upper) or raw_map.get(norm_sym)
-        if not hit or hit[0] is None or len(hit[0]) < 5:
-            return {"error": "no data or invalid ticker", "symbol": raw, "tried": norm_sym}
+            return {"error": "no data or invalid ticker", "symbol": raw, "tried": candidates}
         hist, info, calendar = hit
     except Exception as e:
         logger.exception("Ad-hoc yf fetch failed for %s", raw)
-        return {"error": f"fetch failed: {e}", "symbol": raw}
+        return {"error": safe_error_detail("fetch failed", e), "symbol": raw}
 
     # Gather best available news context (from the live broad crawlers including Google News)
     # so that news_*, smart_money_*, catalyst factors work the same as for hot list stocks.
@@ -490,7 +592,7 @@ async def api_symbol(symbol: str, refresh: bool = False):
         )
     except Exception as e:
         logger.exception("Ad-hoc engine failed for %s", norm_sym)
-        return {"error": f"analysis failed: {e}", "symbol": raw}
+        return {"error": safe_error_detail("analysis failed", e), "symbol": raw}
 
     # Build payload identical in shape to live scan results
     company_name = (
@@ -511,8 +613,11 @@ async def api_symbol(symbol: str, refresh: bool = False):
         "factors_total": sig.factors_total,
         "factor_details": sig.factor_details,
         "factor_breakdown": sig.factor_breakdown,
+        "why_good_reasons": (sig.metrics or {}).get("reasons", [])[:8],
+        "fundamental_reasons_count": (sig.metrics or {}).get("fundamental_reasons_count", 0),
         "sparkline": [round(float(x), 4) for x in hist["Close"].tail(30).tolist()] if len(hist) > 0 else [],
         "ad_hoc": True,
+        "identity_verified": _is_known_symbol(norm_sym, us_universe, india_universe, uk_universe) or _has_symbol_identity(norm_sym, info or {}),
         "analyzed_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -859,13 +964,14 @@ async def api_regime():
 
 
 @app.get("/api/edge")
-async def api_edge(days: int = 2, min_score: float = 55.0):
+async def api_edge(request: Request, days: int = 2, min_score: float = 55.0):
     """Backtest / historical edge view with forward outcomes.
     Rich stats: hit rates by bucket for 1d/3d/7d/14d, max DD aggregates, confidence breakdowns,
     simple factor performance (which passed factors historically showed edge in snapshots).
     Uses recent_strong_snapshots_with_outcomes (enhanced yf-at-query-time with cache) + payload confidence/buy/quality from price_crawler + analyze engine.
     Self-validating; no new engine invented.
     """
+    _enforce_rate_limit(request, "edge")
     snaps = await recent_strong_snapshots_with_outcomes(days=days, min_score=min_score, limit=120)
     regime = await get_regime()
 
@@ -1053,7 +1159,7 @@ async def api_edge(days: int = 2, min_score: float = 55.0):
 
 
 @app.get("/api/discover")
-async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180):
+async def api_discover(request: Request, limit: int = 80, min_score: float = 32, extra: int = 180):
     """'Scan More / Full Discovery' feature.
     Scrapes/grows from multiple sources (multiple wiki lists + large static pools in universe.py + data/*.txt)
     then runs the *exact same deep 140-factor engine* on a large additional pool of listed names
@@ -1061,6 +1167,8 @@ async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180)
     Returns promising new high-conviction setups that can be merged into the UI.
     Triggered by user button so we can be more aggressive on batching without killing free tier.
     """
+    _enforce_rate_limit(request, "discover")
+
     from app.universe import get_full_discovery_pool
     from app.crawler.price_crawler import _fetch_batch
     from app.engine.signals import analyze_symbol
@@ -1129,13 +1237,30 @@ async def api_discover(limit: int = 80, min_score: float = 32, extra: int = 180)
             await asyncio.sleep(delay)
             continue
 
-    discovered.sort(key=lambda x: x.get("score", 0), reverse=True)
+    # === ENHANCED STOCK SEARCHING: Focus on high-quality NSE/BSE fundamentals ===
+    # Good promoter, cheap val (PE/PB/PEG), strong FCF/profits/sales/ROE, market leader scale, FII backing,
+    # huge orders, high sustainable dividends + tech catalysts. Multiple explicit reasons published.
+    # Data managed via gating + rate limits (free Oracle/Render friendly).
+    for p in discovered:
+        m = p.get("metrics", {}) or {}
+        fund_cnt = m.get("fundamental_reasons_count", 0) or 0
+        cat_cnt = m.get("catalyst_reasons_count", 0) or 0
+        if p.get("market") == "india" and (fund_cnt + cat_cnt) >= 2:
+            p["fundamental_strong_india"] = True
+            p["score"] = round((p.get("score", 0) or 0) + (fund_cnt + cat_cnt) * 1.1 , 1)
+            p["why_good_reasons"] = (m.get("reasons") or [])[:6]  # juice for UI: multiple not one
+    discovered.sort(key=lambda x: (
+        1 if x.get("market") == "india" and x.get("fundamental_strong_india") else 0,
+        x.get("metrics", {}).get("fundamental_reasons_count", 0),
+        x.get("metrics", {}).get("catalyst_reasons_count", 0),
+        x.get("score", 0)
+    ), reverse=True)
     return {
         "discovered": discovered[:limit],
         "scanned_extra": len(candidates),
         "total_pool": len(full_pool),
         "min_score": min_score,
-        "note": "These are on-demand deep engine results from a much larger multi-source list (wiki scrapes + big static + extras). Not part of the regular live hot ranking until they stay hot."
+        "note": "Deep search prioritizes NSE/BSE stocks with multiple solid fundamental + catalyst reasons (promoter/FII backing, FCF/profits/sales growth, cheaper valuations, orders, high divs, ROE etc). Technical too. See 'why_good_reasons' for published research."
     }
 
 
@@ -1149,10 +1274,12 @@ async def api_snapshots_for_symbol(symbol: str, limit: int = 20):
 
 
 @app.post("/api/full_exhaustive_scan")
-async def api_full_exhaustive_scan():
+async def api_full_exhaustive_scan(request: Request):
     """Start background job for full exhaustive scan (non-blocking).
     Returns job_id. Poll /api/job_status/{id} or listen to WS for progress.
     """
+    _enforce_rate_limit(request, "full_scan")
+
     from app.universe import get_complete_exhaustive_universe
     from app.crawler.price_crawler import full_exhaustive_scan
     import uuid

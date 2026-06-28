@@ -18,5 +18,6 @@ export default function CatalystBadges({ row, score }: { row: Row; score: number
   if (row.metrics?.is_extended) out.push(<span key="ext" className="cat-badge risk">Extended</span>)
   if (row.discovered) out.push(<span key="disc" className="cat-badge sm">DISC</span>)
   if (row.full_exhaustive) out.push(<span key="full" className="cat-badge news">FULL</span>)
+  if (row.ad_hoc) out.push(<span key="adhoc" className="cat-badge news">ANALYZED</span>)
   return <>{out}</>
 }

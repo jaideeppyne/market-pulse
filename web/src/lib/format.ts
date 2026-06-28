@@ -1,6 +1,19 @@
+import type { Market, Row, Snapshot } from '../types'
+
 export const DISPLAY_LIMIT = 220
 
-export function marketOf(row = {}) {
+type MarketFilter = Market | 'all'
+type UiFilters = {
+  search?: string
+  earlyOnly?: boolean
+  whaleOnly?: boolean
+  sectorFilter?: string | null
+  sortBy?: string
+}
+
+type SnapshotWithDiscoveries = Partial<Snapshot> & { discoveries?: Row[] }
+
+export function marketOf(row: Partial<Row> = {}): Market {
   const sym = String(row.symbol || '').toUpperCase()
   if (row.market || row.metrics?.market) return row.market || row.metrics?.market
   if (sym.endsWith('.NS') || sym.endsWith('.BO')) return 'india'
@@ -8,28 +21,28 @@ export function marketOf(row = {}) {
   return 'us'
 }
 
-export const CURRENCY = { india: '₹', uk: '£', us: '$' }
-export function currencyOf(row = {}) {
+export const CURRENCY: Record<Market, string> = { india: '₹', uk: '£', us: '$' }
+export function currencyOf(row: Partial<Row> = {}) {
   return CURRENCY[marketOf(row)] || '$'
 }
 
-export function rankScore(row = {}) {
+export function rankScore(row: Partial<Row> = {}) {
   const m = row.metrics || {}
   return Number(row.buy_score ?? m.buy_score ?? row.score ?? m.score ?? 0)
 }
 
-export function qualityScore(row = {}) {
+export function qualityScore(row: Partial<Row> = {}) {
   const m = row.metrics || {}
   return Number(row.quality_score ?? m.quality_score ?? row.score ?? 0)
 }
 
-export function factorsDisplay(row = {}) {
+export function factorsDisplay(row: Partial<Row> = {}) {
   const total = Number(row.factors_total ?? row.metrics?.factors_total ?? row.factor_breakdown?.length ?? 0)
   const hit = Number(row.factors_hit ?? row.metrics?.factors_hit ?? (row.factor_breakdown || []).filter((f) => f.status === 'pass').length)
   return { hit, total }
 }
 
-export function hasSmartMoney(row = {}) {
+export function hasSmartMoney(row: Partial<Row> = {}) {
   const sm = row.metrics?.smart_money
   if (sm?.hits?.length || sm?.primary_alert) return true
   return (row.alerts || []).some((a) => /LEGEND|WHALE|POLITICIAN|FOREIGN BUY|SMART MONEY|INSIDER|FORM 4/i.test(String(a)))
@@ -58,7 +71,7 @@ export function rvolTier(v = 0) {
   return 'lo'
 }
 
-export function getHotPool(data = {}, marketFilter = 'all') {
+export function getHotPool(data: SnapshotWithDiscoveries = {}, marketFilter: MarketFilter = 'all'): Row[] {
   const pools = [
     ...(data.hot || []),
     ...((data.hot_by_market && data.hot_by_market.us) || []),
@@ -77,14 +90,14 @@ export function getHotPool(data = {}, marketFilter = 'all') {
   return deduped
 }
 
-export function filterAndSort(rows = [], ui = {}) {
+export function filterAndSort(rows: Row[] = [], ui: UiFilters = {}) {
   const q = String(ui.search || '').trim().toUpperCase()
   const filtered = rows.filter((row) => {
     const m = row.metrics || {}
     if (ui.earlyOnly && m.is_extended) return false
     if (ui.whaleOnly && !hasSmartMoney(row)) return false
     if (ui.sectorFilter && m.sector !== ui.sectorFilter) return false
-    if (q) {
+    if (q && rows.length > 1) {
       const hay = `${row.symbol || ''} ${m.name || ''} ${m.sector || ''}`.toUpperCase()
       if (!hay.includes(q)) return false
     }
@@ -95,7 +108,7 @@ export function filterAndSort(rows = [], ui = {}) {
     const m = row.metrics || {}
     if (sortBy === 'quality') return qualityScore(row)
     if (sortBy === 'factors') return factorsDisplay(row).hit
-    if (sortBy === 'day') return Number(m.day_chg_pct ?? row.day_chg_pct ?? 0)
+    if (sortBy === 'day') return Number(m.day_chg_pct ?? (row as any).day_chg_pct ?? 0)
     if (sortBy === 'rvol') return Number(m.rvol ?? m.relative_volume ?? 0)
     return rankScore(row)
   }

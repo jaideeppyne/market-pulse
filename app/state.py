@@ -9,11 +9,28 @@ from typing import Any
 from app.engine.sector_intel import build_cycle_overview, build_sector_summary
 
 
+def _ensure_event_loop() -> None:
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+
+def _new_lock() -> asyncio.Lock:
+    _ensure_event_loop()
+    return asyncio.Lock()
+
+
+def _new_event() -> asyncio.Event:
+    _ensure_event_loop()
+    return asyncio.Event()
+
+
 @dataclass
 class AppState:
     """Thread-safe shared state for scanners and WebSocket clients."""
 
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    lock: asyncio.Lock = field(default_factory=_new_lock)
     universe: dict[str, list[str]] = field(default_factory=dict)
     symbols: dict[str, dict[str, Any]] = field(default_factory=dict)
     hot: list[dict[str, Any]] = field(default_factory=list)
@@ -39,7 +56,7 @@ class AppState:
     hot_score_threshold: float = 55.0
     scan_generation: int = 0
     live_tick: int = 0
-    broadcast_event: asyncio.Event = field(default_factory=asyncio.Event)
+    broadcast_event: asyncio.Event = field(default_factory=_new_event)
     jobs: dict = field(default_factory=dict)  # job_id -> {"status": "running"/"done"/"error", "progress": 0-100, "result": ..., "started": ...}
     investor_events: list = field(default_factory=list)  # recent official filings (insider/ceo/promoter etc.) for UI/radar
 

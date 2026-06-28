@@ -17,12 +17,14 @@ export default function DetailPanel() {
     return pools.find((r) => r.symbol === sym) || null
   })
   const needFetch = !!sym && (!liveRow || !liveRow.factor_breakdown)
-  const { data: fetched, isFetching } = useAnalyzeQuery(sym, { skip: !needFetch })
+  const { data: fetched, isFetching, isError, error } = useAnalyzeQuery(sym, { skip: !needFetch })
   const [addWatch] = useAddWatchMutation()
   const [addPosition] = useAddPositionMutation()
   const toast = useToast()
 
   const row = (fetched && fetched.symbol) ? fetched : liveRow
+  const queryError = error as any
+  const errorText = fetched?.error || queryError?.error || queryError?.data?.detail || 'No market data returned for this symbol.'
 
   if (!sym) {
     return (
@@ -32,11 +34,22 @@ export default function DetailPanel() {
       </div>
     )
   }
+  if (fetched?.error || isError) {
+    return (
+      <div className="detail-panel">
+        <h2 className="detail-panel__title">Stock detail</h2>
+        <div className="detail-empty detail-empty--error">
+          <p>Could not analyze {sym}</p>
+          <p className="muted">{errorText}</p>
+        </div>
+      </div>
+    )
+  }
   if (!row || !row.metrics) {
     return (
       <div className="detail-panel">
         <h2 className="detail-panel__title">Stock detail</h2>
-        <div className="detail-empty"><p>{isFetching ? `Analyzing ${sym}…` : `No data yet for ${sym}`}</p><p className="muted">Running the full engine</p></div>
+        <div className="detail-empty"><p>{isFetching ? `Analyzing ${sym}…` : `No data yet for ${sym}`}</p><p className="muted">{isFetching ? 'Running yfinance history, fundamentals, news, smart money, and factor engine.' : 'Press Enter in search or use Analyze again.'}</p></div>
       </div>
     )
   }
