@@ -95,6 +95,10 @@ export interface Research {
 export interface Row {
   symbol: string
   research?: Research
+  news_count?: number
+  catalyst?: string
+  freshly_in_news?: boolean
+  top_news?: { title?: string; link?: string; published_at?: string }[]
   top_factors?: { id?: string; label?: string; category?: string; tier?: string; weighted_points?: number }[]
   market?: Market | string
   score?: number

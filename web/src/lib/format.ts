@@ -114,7 +114,9 @@ export function topPicks(rows: Row[] = [], n = 6): Row[] {
     .map((r) => {
       const res = researchOf(r)
       const strong = res?.fundamentally_strong ? 1 : 0
-      const score = strong * 100000 + gradeRank(r) * 1000 + Math.round(rankScore(r))
+      const fresh = r.freshly_in_news ? 1 : 0
+      const cat = r.catalyst ? 1 : 0
+      const score = strong * 100000 + (fresh + cat) * 6000 + gradeRank(r) * 1000 + Math.round(rankScore(r))
       return { r, score }
     })
     .sort((a, b) => b.score - a.score)

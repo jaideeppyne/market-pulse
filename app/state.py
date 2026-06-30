@@ -70,9 +70,14 @@ class AppState:
         if value is None:
             value = row.get("score", 0)
         try:
-            return float(value or 0)
+            base = float(value or 0)
         except Exception:
-            return 0.0
+            base = 0.0
+        try:
+            base += float((row.get("metrics") or {}).get("news_boost") or 0)
+        except Exception:
+            pass
+        return base
 
     @staticmethod
     def _slim_scan_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -125,6 +130,10 @@ class AppState:
             "sparkline": row.get("sparkline"),
             "top_factors": (m.get("top_weighted_factors") or [])[:10],
             "research": research,
+            "news_count": m.get("news_count"),
+            "catalyst": m.get("catalyst"),
+            "freshly_in_news": row.get("freshly_in_news", False),
+            "top_news": (row.get("news") or [])[:1],
         }
 
     def seed_quality_universe(self) -> None:
@@ -147,6 +156,57 @@ class AppState:
             self.broadcast_event.set()
         except Exception:
             pass
+
+    _NEWS_CATALYSTS = [
+        (("bags order", "wins order", "won order", "order win", "secures order", "secured order",
+          " order ", "contract win", "wins contract", "bagged", "l1 bidder", "awarded"), "Order win", 7),
+        (("acquire", "acquisition", "buys stake", "raises stake", "fii", "foreign institutional",
+          "block deal", "bulk deal", "promoter buy"), "Stake / deal", 5),
+        (("record profit", "profit jumps", "profit surges", "beats estimate", "strong q", "results",
+          "net profit", "revenue jumps", "earnings"), "Results", 4),
+        (("dividend", "buyback", "bonus issue", "special dividend"), "Dividend / buyback", 4),
+        (("upgrade", "target raised", "outperform", "initiates coverage", "rating raised"), "Broker upgrade", 4),
+        (("new plant", "capex", "expansion", "launch", "partnership", "tie-up", "ties up", "jv "), "Expansion / launch", 3),
+    ]
+
+    def _apply_news_to_universe(self) -> None:
+        """Make the board change with the news: attach fresh headlines + a detected
+        catalyst to each tracked name and apply a freshness boost so news-active
+        companies rise. Free + live (news RSS works from datacenter IPs)."""
+        by_sym: dict[str, list[dict]] = {}
+        for it in (self.news or []):
+            for sym in (it.get("symbols") or []):
+                by_sym.setdefault(sym, []).append(it)
+        for sym, row in self.symbols.items():
+            m = row.setdefault("metrics", {})
+            items = by_sym.get(sym) or []
+            cnt = int(self.news_by_symbol.get(sym, 0) or 0)
+            m["news_count"] = cnt
+            if items:
+                row["news"] = [
+                    {"title": i.get("title"), "link": i.get("link"), "published_at": i.get("published_at")}
+                    for i in items[:5]
+                ]
+                blob = " ".join((i.get("title") or "") for i in items).lower()
+                catalyst, weight = None, 0
+                for kws, label, w in self._NEWS_CATALYSTS:
+                    if any(k in blob for k in kws):
+                        catalyst, weight = label, w
+                        break
+                m["news_boost"] = min(10.0, 2.0 + cnt + weight)
+                row["freshly_in_news"] = True
+                if catalyst:
+                    m["catalyst"] = catalyst
+                    res = row.get("research")
+                    if isinstance(res, dict):
+                        res["catalyst"] = catalyst
+                else:
+                    m.pop("catalyst", None)
+            else:
+                m["news_boost"] = 0.0
+                row.pop("news", None)
+                row.pop("freshly_in_news", None)
+                m.pop("catalyst", None)
 
     def _rebuild_hot_lists(self) -> None:
         threshold = self.hot_score_threshold
@@ -320,6 +380,11 @@ class AppState:
                 self.stats["last_empty_news_scan"] = now
             self.live_tick += 1
             self.stats["live_tick"] = self.live_tick
+            try:
+                self._apply_news_to_universe()
+                self._rebuild_hot_lists()
+            except Exception:
+                pass
         self.broadcast_event.set()
 
     async def update_events(self, events: list[dict[str, Any]]) -> None:

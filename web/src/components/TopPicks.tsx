@@ -21,6 +21,9 @@ function PickCard({ row }: { row: Row }) {
   const archetype = res?.archetype
   const headline = res?.headline
   const watch = (res?.profile?.watch || [])[0]
+  const catalyst = row.catalyst
+  const news = (row.top_news || [])[0]
+  const newsCount = row.news_count || 0
   const buy = Math.round(rankScore(row))
 
   return (
@@ -31,6 +34,12 @@ function PickCard({ row }: { row: Row }) {
         <span className="pick-card__buy" title="Buy score">{buy}</span>
       </div>
       {archetype && <div className="pick-card__arch" title="What kind of stock this is">{archetype}</div>}
+      {(catalyst || newsCount > 0) && (
+        <div className="pick-card__news" title={news?.title || 'Recent news activity'}>
+          {catalyst ? <span className="cat-badge">⚡ {catalyst}</span> : <span className="news-badge">📰 In the news</span>}
+          {news?.title && <span className="pick-news__hl">{news.title}</span>}
+        </div>
+      )}
       <div className="pick-card__name" title={displayName(row)}>{displayName(row)}</div>
       <div className="pick-card__sym">
         <span className="pick-card__ticker">{row.symbol}</span>
@@ -69,6 +78,7 @@ export default function TopPicks() {
   const strong = pool.filter(isFundamentallyStrong).length
   const whales = pool.filter(hasSmartMoney).length
   const movers = pool.filter((r) => Math.abs(Number((r.metrics || {}).day_chg_pct ?? 0)) >= 3).length
+  const inNews = pool.filter((r) => r.freshly_in_news || r.catalyst).length
 
   if (picks.length === 0) {
     return (
@@ -98,7 +108,7 @@ export default function TopPicks() {
           {' '}leads today{leadRes?.tags && leadRes.tags[0] ? ` — ${leadRes.tags[0].toLowerCase()}` : ''}.
         </span>
         <span className="market-read__stats">
-          <b>{strong}</b> fundamentally strong · <b>{whales}</b> with smart-money buys · <b>{movers}</b> big movers
+          <b>{strong}</b> fundamentally strong · <b>{inNews}</b> in the news today · <b>{movers}</b> big movers
         </span>
       </div>
       <div className="picks-grid">

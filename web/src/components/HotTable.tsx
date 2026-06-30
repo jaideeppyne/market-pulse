@@ -70,6 +70,11 @@ function HotRow({ row, selected }: { row: Row; selected: boolean }) {
           <button className="factor-pill" title={`${hit} of ${total} weighted factors passing — click for the full checklist`} onClick={(e) => { e.stopPropagation(); dispatch(openFactors(sym)) }}>{hit}/{total}</button>
         </div>
         <div className={'verdict verdict--' + vd.tone} title="Plain-English read of Buy vs Quality score">{vd.text}</div>
+        {(row.catalyst || (row.news_count || 0) > 0) && (
+          <div className="row-news" title={(row.top_news || [])[0]?.title || 'Recent news'}>
+            {row.catalyst ? <span className="cat-badge sm">⚡ {row.catalyst}</span> : <span className="news-badge sm">📰 news</span>}
+          </div>
+        )}
         {reason && <div className="cats__reason">{reason}</div>}
       </td>
       <td className="col-rvol"><span className={'rvol ' + rvolTier(m.rvol)} title="Relative volume vs its own average — &gt;2× means unusually active">{m.rvol != null ? m.rvol + '×' : '—'}</span></td>
